@@ -3,7 +3,7 @@
  * Simplified version that reads pre-denormalized data
  */
 
-import { format, startOfWeek, addDays, isWithinInterval, parseISO } from 'date-fns';
+import { format, addDays, isWithinInterval, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { getCollections } from '../config/mongodb.js';
 import { getPlatformColor } from '../config/platformImages.js';
@@ -118,12 +118,13 @@ export async function getDashboardData(): Promise<DashboardResponse> {
   const today = new Date();
   const todayStr = format(today, 'yyyy-MM-dd');
 
-  // Calculate week range (starting from Monday of current week)
-  const weekStart = startOfWeek(today, { weekStartsOn: 1 });
+  // Calculate 7-day range starting from TODAY (not Monday of week)
+  // This aligns with the frontend's expectation and stays-observator behavior
   const weekDays: Date[] = [];
   for (let i = 0; i < 7; i++) {
-    weekDays.push(addDays(weekStart, i));
+    weekDays.push(addDays(today, i));
   }
+  const weekStart = today;
 
   // Calculate date ranges we need
   const past30Str = format(addDays(today, -30), 'yyyy-MM-dd');
