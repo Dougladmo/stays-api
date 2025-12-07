@@ -65,6 +65,7 @@ async function updateSyncStatus(
 
 /**
  * Fetches detailed booking information with rate limiting
+ * Uses booking._id as the reservation identifier for the API endpoint
  */
 async function fetchBookingDetails(
   bookings: StaysBooking[]
@@ -74,15 +75,34 @@ async function fetchBookingDetails(
 
   console.log(`📋 Fetching details for ${bookings.length} bookings...`);
 
+  let successCount = 0;
+  let failCount = 0;
+
   const tasks = bookings.map((booking) =>
     queue.add(async () => {
       try {
-        const details = await staysApiClient.getBookingDetails(booking._id);
+        // Use booking.id (code like "FA01J") for the API endpoint, NOT _id
+        const details = await staysApiClient.getBookingDetails(booking.id);
+
+        // Log guest details for debugging
+        if (details.guestsDetails) {
+          const hasName = !!details.guestsDetails.name;
+          const hasList = details.guestsDetails.list && details.guestsDetails.list.length > 0;
+          if (!hasName && !hasList) {
+            console.log(`⚠️ Booking ${booking.id}: No guest name data in guestsDetails`);
+          }
+        } else {
+          console.log(`⚠️ Booking ${booking.id}: guestsDetails is undefined`);
+        }
+
+        // Store by _id (internal ID) for consistency with MongoDB
         detailsMap.set(booking._id, details);
+        successCount++;
       } catch (error) {
-        console.warn(`⚠️ Failed to fetch details for booking ${booking._id}:`, error);
+        console.warn(`⚠️ Failed to fetch details for booking ${booking.id}:`, error);
         // Use the basic booking data if details fetch fails
         detailsMap.set(booking._id, booking);
+        failCount++;
       }
     })
   );
@@ -95,7 +115,7 @@ async function fetchBookingDetails(
   });
 
   await Promise.all(tasks);
-  console.log(`✅ Fetched details for ${detailsMap.size} bookings`);
+  console.log(`✅ Fetched details: ${successCount} success, ${failCount} failed`);
 
   return detailsMap;
 }
@@ -188,8 +208,8 @@ async function writeReservationsToMongo(
     // Get platform from partner or source
     const platform = booking.partner?.name || booking.source || null;
 
-    // Get guest name from guestsDetails
-    const guestName = booking.guestsDetails?.name || null;
+    // Get guest name (from list or guestsDetails)
+    const guestName = extractGuestName(booking);
 
     return {
       updateOne: {
@@ -230,6 +250,78 @@ async function writeReservationsToMongo(
 
   const result = await collections.reservations.bulkWrite(operations as any);
   return result.upsertedCount + result.modifiedCount;
+}
+
+/**
+ * Check if a guest name is a valid real name (not a placeholder)
+ */
+function isValidGuestName(name: string | undefined): boolean {
+  if (!name || name.trim() === '') return false;
+
+  // Filter out placeholder names
+  const placeholders = [
+    'adult_0', 'adult_1', 'adult_2', 'adult_3',
+    'child_0', 'child_1', 'child_2', 'child_3',
+    'baby_0', 'baby_1', 'baby_2', 'baby_3',
+    'guest', 'hóspede', 'hospede',
+  ];
+
+  const lowerName = name.toLowerCase().trim();
+
+  // Check if it's a known placeholder
+  if (placeholders.includes(lowerName)) return false;
+
+  // Check if it starts with placeholder prefixes
+  if (lowerName.startsWith('adult_') || lowerName.startsWith('child_') || lowerName.startsWith('baby_')) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Extract guest name from booking data
+ * Priority: 1) guestsDetails.name, 2) primary guest in list, 3) first guest in list, 4) fallback
+ * Changed priority to check guestsDetails.name first as it's more reliable in Stays API
+ */
+function extractGuestName(booking: StaysBooking, debug = false): string {
+  // First, check guestsDetails.name (most reliable source)
+  if (booking.guestsDetails?.name && isValidGuestName(booking.guestsDetails.name)) {
+    if (debug) console.log(`   ✅ Found name in guestsDetails.name: "${booking.guestsDetails.name}"`);
+    return booking.guestsDetails.name.trim();
+  }
+
+  // Check guestsDetails.list for guests
+  const guestsList = booking.guestsDetails?.list;
+  if (debug) {
+    console.log(`   📋 guestsDetails.list exists: ${!!guestsList}`);
+    console.log(`   📋 guestsDetails.list is array: ${Array.isArray(guestsList)}`);
+    console.log(`   📋 guestsDetails.list length: ${guestsList?.length || 0}`);
+  }
+
+  if (guestsList && Array.isArray(guestsList) && guestsList.length > 0) {
+    // Find primary guest first
+    const primaryGuest = guestsList.find(g => g.primary === true);
+    if (debug) console.log(`   🔍 Primary guest: ${JSON.stringify(primaryGuest)}`);
+
+    if (primaryGuest?.name && isValidGuestName(primaryGuest.name)) {
+      if (debug) console.log(`   ✅ Found name in primary guest: "${primaryGuest.name}"`);
+      return primaryGuest.name.trim();
+    }
+
+    // Otherwise, get first guest with a valid name
+    const firstValidGuest = guestsList.find(g => isValidGuestName(g.name));
+    if (debug) console.log(`   🔍 First valid guest: ${JSON.stringify(firstValidGuest)}`);
+
+    if (firstValidGuest?.name) {
+      if (debug) console.log(`   ✅ Found name in first valid guest: "${firstValidGuest.name}"`);
+      return firstValidGuest.name.trim();
+    }
+  }
+
+  // Final fallback
+  if (debug) console.log(`   ❌ No valid name found, using fallback "Hóspede"`);
+  return 'Hóspede';
 }
 
 /**
@@ -293,7 +385,18 @@ async function writeUnifiedBookingsToMongo(
 
   if (entries.length === 0) return 0;
 
+  // Debug first 3 bookings
+  let debugCount = 0;
+  const MAX_DEBUG = 3;
+
   const operations = entries.map(([bookingId, booking]) => {
+    const shouldDebug = debugCount < MAX_DEBUG;
+    if (shouldDebug) {
+      console.log(`\n🔍 DEBUG Booking ${debugCount + 1}/${MAX_DEBUG}:`);
+      console.log(`   ID: ${bookingId} (code: ${booking.id})`);
+      console.log(`   guestsDetails: ${JSON.stringify(booking.guestsDetails)}`);
+      debugCount++;
+    }
     // Get listing info
     const listing = listings.get(booking._idlisting);
     const apartmentCode = listing?.internalName || booking._idlisting;
@@ -303,8 +406,11 @@ async function writeUnifiedBookingsToMongo(
     // Get platform
     const platform = booking.partner?.name || booking.source || null;
 
-    // Get guest name
-    const guestName = booking.guestsDetails?.name || 'Hóspede';
+    // Get guest name (from list or guestsDetails)
+    const guestName = extractGuestName(booking, shouldDebug);
+    if (shouldDebug) {
+      console.log(`   🎯 Extracted guestName: "${guestName}"`);
+    }
 
     // Calculate guest count
     const guestCount = booking.guests ||
