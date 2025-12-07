@@ -147,15 +147,15 @@ export interface StaysApiError {
  */
 export type GuestStatus = 'checkin' | 'checkout' | 'staying';
 
-// Firestore document types
+// MongoDB document types (keeping "Firestore" prefix for backward compatibility)
 export interface FirestoreListing {
   staysListingId: string;
   internalName: string | null;
   name: string | null;
   address: string | null;
   thumbnailUrl: string | null;
-  createdAt: FirebaseFirestore.Timestamp;
-  updatedAt: FirebaseFirestore.Timestamp;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface FirestoreReservation {
@@ -179,19 +179,19 @@ export interface FirestoreReservation {
   status: string | null;
   priceValue: number | null;
   priceCurrency: string | null;
-  createdAt: FirebaseFirestore.Timestamp;
-  updatedAt: FirebaseFirestore.Timestamp;
-  syncedAt: FirebaseFirestore.Timestamp;
+  createdAt: Date;
+  updatedAt: Date;
+  syncedAt: Date;
 }
 
 export interface FirestoreSyncStatus {
-  lastSyncAt: FirebaseFirestore.Timestamp | null;
+  lastSyncAt: Date | null;
   status: 'success' | 'error' | 'running' | 'never';
   lastError: string | null;
   bookingsCount: number;
   listingsCount: number;
   durationMs: number;
-  updatedAt: FirebaseFirestore.Timestamp;
+  updatedAt: Date;
 }
 
 /**
@@ -239,7 +239,7 @@ export interface FirestoreUnifiedBooking {
   priceCurrency: string | null;
 
   // Timestamps
-  createdAt: FirebaseFirestore.Timestamp;
-  updatedAt: FirebaseFirestore.Timestamp;
-  syncedAt: FirebaseFirestore.Timestamp;
+  createdAt: Date;
+  updatedAt: Date;
+  syncedAt: Date;
 }

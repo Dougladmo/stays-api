@@ -1,7 +1,7 @@
 {
   "name": "stays-api",
   "version": "1.0.0",
-  "description": "Centralized API for Stays.net booking data with Firebase Firestore",
+  "description": "Centralized API for Stays.net booking data with MongoDB Atlas",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -15,7 +15,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "fastify": "^5.1.0",
-    "firebase-admin": "^12.7.0",
+    "mongodb": "^7.0.0",
     "node-cron": "^3.0.3",
     "p-queue": "^8.0.1",
     "zod": "^3.24.1"

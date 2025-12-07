@@ -1,10 +1,11 @@
 /**
  * Stays API - Entry Point
- * Centralized API for Stays.net booking data with Firebase Firestore
+ * Centralized API for Stays.net booking data with MongoDB Atlas
  */
 
 import { createServer } from './server.js';
 import { config } from './config/env.js';
+import { connectMongoDB, closeMongoDB } from './config/mongodb.js';
 import { startScheduler, runInitialSync } from './jobs/scheduler.js';
 
 async function main() {
@@ -15,6 +16,9 @@ async function main() {
   console.log(`📌 Date range: ±${config.sync.dateRangeDays} days`);
 
   try {
+    // Connect to MongoDB
+    await connectMongoDB();
+
     // Create and start the server
     const server = await createServer();
 
@@ -41,6 +45,7 @@ async function main() {
     const shutdown = async (signal: string) => {
       console.log(`\n📴 Received ${signal}, shutting down...`);
       await server.close();
+      await closeMongoDB();
       process.exit(0);
     };
 
@@ -48,6 +53,7 @@ async function main() {
     process.on('SIGINT', () => shutdown('SIGINT'));
   } catch (error) {
     console.error('❌ Failed to start server:', error);
+    await closeMongoDB();
     process.exit(1);
   }
 }

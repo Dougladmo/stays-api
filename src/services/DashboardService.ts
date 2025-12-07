@@ -1,11 +1,11 @@
 /**
- * Dashboard Service - Reads from unified Firestore collection
+ * Dashboard Service - Reads from unified MongoDB collection
  * Simplified version that reads pre-denormalized data
  */
 
 import { format, startOfWeek, addDays, isWithinInterval, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { collections } from '../config/firebase.js';
+import { getCollections } from '../config/mongodb.js';
 import { getPlatformColor } from '../config/platformImages.js';
 import { getSyncStatus } from './sync/SyncService.js';
 import type { FirestoreUnifiedBooking, GuestStatus } from './stays/types.js';
@@ -78,29 +78,24 @@ function getGuestStatus(checkIn: string, checkOut: string, date: Date): GuestSta
 }
 
 /**
- * Fetches all unified bookings from Firestore
+ * Fetches all unified bookings from MongoDB
  */
 async function getUnifiedBookings(
   from: string,
   to: string
 ): Promise<FirestoreUnifiedBooking[]> {
+  const collections = getCollections();
+
   // Get bookings that overlap with the date range
-  // Using single inequality to avoid requiring composite index
-  const snapshot = await collections.unifiedBookings
-    .where('checkOutDate', '>=', from)
-    .get();
+  const docs = await collections.unifiedBookings
+    .find({
+      checkOutDate: { $gte: from },
+      checkInDate: { $lte: to },
+      type: { $ne: 'blocked' },
+    })
+    .toArray();
 
-  const bookings: FirestoreUnifiedBooking[] = [];
-
-  snapshot.docs.forEach((doc) => {
-    const data = doc.data() as FirestoreUnifiedBooking;
-    // Filter locally: not blocked AND checkInDate within range
-    if (data.type !== 'blocked' && data.checkInDate <= to) {
-      bookings.push(data);
-    }
-  });
-
-  return bookings;
+  return docs as unknown as FirestoreUnifiedBooking[];
 }
 
 /**
@@ -285,7 +280,9 @@ export async function getDashboardData(): Promise<DashboardResponse> {
     reservationOrigins,
     occupancyTrend,
     availableUnits,
-    lastSyncAt: syncStatus?.lastSyncAt?.toDate?.()?.toISOString() || null,
+    lastSyncAt: syncStatus?.lastSyncAt instanceof Date
+      ? syncStatus.lastSyncAt.toISOString()
+      : (syncStatus?.lastSyncAt || null),
     syncStatus: syncStatus?.status || 'never',
   };
 }

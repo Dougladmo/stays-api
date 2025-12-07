@@ -1,9 +1,9 @@
 /**
- * Calendar Service - Reads from unified Firestore collection
+ * Calendar Service - Reads from unified MongoDB collection
  * Simplified version that reads pre-denormalized data
  */
 
-import { collections } from '../config/firebase.js';
+import { getCollections } from '../config/mongodb.js';
 import { getSyncStatus } from './sync/SyncService.js';
 import type { FirestoreUnifiedBooking } from './stays/types.js';
 
@@ -54,34 +54,30 @@ function mapReservationType(type: string): 'reserved' | 'blocked' | 'provisional
 }
 
 /**
- * Fetches unified bookings within a date range from Firestore
+ * Fetches unified bookings within a date range from MongoDB
  */
 async function getUnifiedBookingsInRange(
   from: string,
   to: string
 ): Promise<FirestoreUnifiedBooking[]> {
+  const collections = getCollections();
+
   // Get bookings that overlap with the date range
-  const snapshot = await collections.unifiedBookings
-    .where('checkOutDate', '>=', from)
-    .get();
+  const docs = await collections.unifiedBookings
+    .find({
+      checkOutDate: { $gte: from },
+      checkInDate: { $lte: to },
+    })
+    .toArray();
 
-  const bookings: FirestoreUnifiedBooking[] = [];
-
-  snapshot.docs.forEach((doc) => {
-    const data = doc.data() as FirestoreUnifiedBooking;
-    if (data.checkInDate <= to) {
-      bookings.push(data);
-    }
-  });
-
-  return bookings;
+  return docs as unknown as FirestoreUnifiedBooking[];
 }
 
 /**
  * Generates the calendar data
  */
 export async function getCalendarData(from: string, to: string): Promise<CalendarResponse> {
-  // Fetch data from Firestore
+  // Fetch data from MongoDB
   const [bookings, syncStatus] = await Promise.all([
     getUnifiedBookingsInRange(from, to),
     getSyncStatus(),
@@ -145,7 +141,9 @@ export async function getCalendarData(from: string, to: string): Promise<Calenda
 
   return {
     units,
-    lastSyncAt: syncStatus?.lastSyncAt?.toDate?.()?.toISOString() || null,
+    lastSyncAt: syncStatus?.lastSyncAt instanceof Date
+      ? syncStatus.lastSyncAt.toISOString()
+      : (syncStatus?.lastSyncAt || null),
     syncStatus: syncStatus?.status || 'never',
   };
 }

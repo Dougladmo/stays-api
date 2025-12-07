@@ -15,7 +15,9 @@ export async function syncRoutes(fastify: FastifyInstance): Promise<void> {
     const status = await getSyncStatus();
 
     return {
-      lastSyncAt: status?.lastSyncAt?.toDate?.()?.toISOString() || null,
+      lastSyncAt: status?.lastSyncAt instanceof Date
+        ? status.lastSyncAt.toISOString()
+        : (status?.lastSyncAt || null),
       status: status?.status || 'never',
       lastError: status?.lastError || null,
       bookingsCount: status?.bookingsCount || 0,

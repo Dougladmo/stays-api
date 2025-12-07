@@ -6,10 +6,9 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   API_KEY: z.string().min(1, 'API_KEY is required'),
 
-  // Firebase
-  FIREBASE_PROJECT_ID: z.string().min(1, 'FIREBASE_PROJECT_ID is required'),
-  FIREBASE_CLIENT_EMAIL: z.string().min(1, 'FIREBASE_CLIENT_EMAIL is required'),
-  FIREBASE_PRIVATE_KEY: z.string().min(1, 'FIREBASE_PRIVATE_KEY is required'),
+  // MongoDB
+  MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
+  MONGODB_DB_NAME: z.string().default('stays_api'),
 
   // Stays.net
   STAYS_API_BASE_URL: z.string().url().default('https://casap.stays.net'),
@@ -40,10 +39,9 @@ export const config = {
   nodeEnv: env.NODE_ENV,
   apiKey: env.API_KEY,
 
-  firebase: {
-    projectId: env.FIREBASE_PROJECT_ID,
-    clientEmail: env.FIREBASE_CLIENT_EMAIL,
-    privateKey: env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+  mongodb: {
+    uri: env.MONGODB_URI,
+    dbName: env.MONGODB_DB_NAME,
   },
 
   stays: {
