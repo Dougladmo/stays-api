@@ -15,7 +15,23 @@ let db: Db | null = null;
 export async function connectMongoDB(): Promise<Db> {
   if (db) return db;
 
-  client = new MongoClient(config.mongodb.uri);
+  client = new MongoClient(config.mongodb.uri, {
+    // Connection pool settings for performance
+    minPoolSize: 5,           // Keep 5 connections warm
+    maxPoolSize: 20,          // Max connections
+    maxIdleTimeMS: 30000,     // Close idle connections after 30s
+
+    // Timeout settings for faster failure detection
+    serverSelectionTimeoutMS: 5000,  // Fail fast if no server
+    socketTimeoutMS: 30000,          // 30s socket timeout
+    connectTimeoutMS: 10000,         // 10s connection timeout
+
+    // Keep-alive for MongoDB Atlas
+    heartbeatFrequencyMS: 10000,     // Check connection every 10s
+
+    // Compression for faster data transfer
+    compressors: ['snappy', 'zlib'],
+  });
   await client.connect();
   db = client.db(config.mongodb.dbName);
 
