@@ -7,6 +7,9 @@ import { healthRoutes } from './health.js';
 import { syncRoutes } from './sync.js';
 import { dashboardRoutes } from './dashboard.js';
 import { calendarRoutes } from './calendar.js';
+import { financialsRoutes } from './financials.js';
+import { statisticsRoutes } from './statistics.js';
+import { guestsRoutes } from './guests.js';
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   // Health routes (no prefix, no auth)
@@ -18,6 +21,9 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
       await api.register(syncRoutes);
       await api.register(dashboardRoutes);
       await api.register(calendarRoutes);
+      await api.register(financialsRoutes);
+      await api.register(statisticsRoutes);
+      await api.register(guestsRoutes);
     },
     { prefix: '/api/v1' }
   );

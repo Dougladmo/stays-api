@@ -8,7 +8,12 @@ import type {
   GetBookingsParams,
   StaysBooking,
   StaysApiError,
-  ListingDetails
+  ListingDetails,
+  StaysPayment,
+  StaysExtraService,
+  StaysClient,
+  GetClientsParams,
+  CalendarDay
 } from './types.js';
 
 /**
@@ -151,6 +156,182 @@ export class StaysApiClient {
     return this.get<ListingDetails>(
       `/external/v1/content/listings/${listingId}`
     );
+  }
+
+  /**
+   * Retrieves all listings
+   */
+  async getAllListings(): Promise<ListingDetails[]> {
+    const allListings: ListingDetails[] = [];
+    let skip = 0;
+    const limit = 20;
+    let hasMore = true;
+
+    console.log('📥 Fetching all listings...');
+
+    while (hasMore) {
+      const listings = await this.get<ListingDetails[]>(
+        '/external/v1/content/listings',
+        { skip: String(skip), limit: String(limit) }
+      );
+
+      allListings.push(...listings);
+      hasMore = listings.length === limit;
+      skip += limit;
+
+      if (skip > 500) {
+        console.warn('⚠️ Reached safety limit of 500 listings');
+        break;
+      }
+    }
+
+    console.log(`✅ Fetched ${allListings.length} listings`);
+    return allListings;
+  }
+
+  // ==================== PAYMENTS API ====================
+
+  /**
+   * Retrieves payments for a specific reservation
+   */
+  async getReservationPayments(reservationId: string): Promise<StaysPayment[]> {
+    try {
+      return await this.get<StaysPayment[]>(
+        `/external/v1/booking/reservations/${reservationId}/payments`
+      );
+    } catch (error) {
+      console.warn(`⚠️ Failed to fetch payments for reservation ${reservationId}:`, error);
+      return [];
+    }
+  }
+
+  // ==================== EXTRA SERVICES API ====================
+
+  /**
+   * Retrieves extra services for a specific reservation
+   */
+  async getReservationExtraServices(reservationId: string): Promise<StaysExtraService[]> {
+    try {
+      return await this.get<StaysExtraService[]>(
+        `/external/v1/booking/reservations/${reservationId}/extra-services`
+      );
+    } catch (error) {
+      console.warn(`⚠️ Failed to fetch extra services for reservation ${reservationId}:`, error);
+      return [];
+    }
+  }
+
+  // ==================== CLIENTS API ====================
+
+  /**
+   * Retrieves clients with pagination and optional filters
+   */
+  async getClients(params: GetClientsParams = {}): Promise<StaysClient[]> {
+    const { skip = 0, limit = 20, name, email, phone } = params;
+
+    const queryParams: Record<string, string> = {
+      skip: String(skip),
+      limit: String(limit),
+    };
+
+    if (name) queryParams.name = name;
+    if (email) queryParams.email = email;
+    if (phone) queryParams.phone = phone;
+
+    return this.get<StaysClient[]>(
+      '/external/v1/booking/clients',
+      queryParams
+    );
+  }
+
+  /**
+   * Retrieves all clients with automatic pagination
+   */
+  async getAllClients(): Promise<StaysClient[]> {
+    const allClients: StaysClient[] = [];
+    let skip = 0;
+    const limit = 20;
+    let hasMore = true;
+
+    console.log('📥 Fetching all clients...');
+
+    while (hasMore) {
+      const clients = await this.getClients({ skip, limit });
+      allClients.push(...clients);
+      hasMore = clients.length === limit;
+      skip += limit;
+
+      if (skip > 2000) {
+        console.warn('⚠️ Reached safety limit of 2000 clients');
+        break;
+      }
+    }
+
+    console.log(`✅ Fetched ${allClients.length} clients`);
+    return allClients;
+  }
+
+  /**
+   * Retrieves details for a specific client
+   */
+  async getClientDetails(clientId: string): Promise<StaysClient> {
+    return this.get<StaysClient>(
+      `/external/v1/booking/clients/${clientId}`
+    );
+  }
+
+  // ==================== CALENDAR AVAILABILITY API ====================
+
+  /**
+   * Retrieves calendar availability for a listing
+   */
+  async getCalendarAvailability(
+    listingId: string,
+    from: string,
+    to: string
+  ): Promise<CalendarDay[]> {
+    try {
+      const response = await this.get<{ days?: CalendarDay[] }>(
+        `/external/v1/calendars/listings/${listingId}`,
+        { from, to }
+      );
+      return response.days || [];
+    } catch (error) {
+      console.warn(`⚠️ Failed to fetch calendar for listing ${listingId}:`, error);
+      return [];
+    }
+  }
+
+  // ==================== EXPORT API ====================
+
+  /**
+   * Export reservations as JSON with date filters
+   * Useful for bulk data retrieval
+   */
+  async exportReservations(from: string, to: string): Promise<StaysBooking[]> {
+    const response = await fetch(`${this.baseUrl}/external/v1/booking/reservations-export`, {
+      method: 'POST',
+      headers: {
+        'Authorization': this.authHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from,
+        to,
+        dateType: 'included',
+        format: 'json'
+      }),
+    });
+
+    if (!response.ok) {
+      throw {
+        message: `Stays API export error: ${response.statusText}`,
+        statusCode: response.status,
+        details: await response.text().catch(() => null),
+      } as StaysApiError;
+    }
+
+    return response.json() as Promise<StaysBooking[]>;
   }
 }
 

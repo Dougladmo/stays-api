@@ -142,6 +142,234 @@ export interface StaysApiError {
   details?: unknown;
 }
 
+// ==================== PAYMENT TYPES ====================
+
+/**
+ * Payment status
+ */
+export type PaymentStatus = 'pending' | 'paid' | 'partial' | 'refunded' | 'canceled';
+
+/**
+ * Payment method
+ */
+export type PaymentMethod = 'credit_card' | 'debit_card' | 'pix' | 'bank_transfer' | 'cash' | 'other';
+
+/**
+ * Individual payment for a reservation
+ */
+export interface StaysPayment {
+  _id: string;
+  value: number;
+  currency: string;
+  date: string;
+  dueDate?: string;
+  method?: PaymentMethod;
+  status: PaymentStatus;
+  description?: string;
+  fees?: number;
+  taxes?: number;
+}
+
+/**
+ * Payment summary for a reservation
+ */
+export interface PaymentSummary {
+  totalValue: number;
+  paidValue: number;
+  pendingValue: number;
+  paymentStatus: PaymentStatus;
+  payments: StaysPayment[];
+}
+
+// ==================== EXTRA SERVICE TYPES ====================
+
+/**
+ * Extra service for a reservation
+ */
+export interface StaysExtraService {
+  _id: string;
+  name: string;
+  value: number;
+  currency: string;
+  quantity: number;
+  category?: string;
+  description?: string;
+}
+
+// ==================== CLIENT/GUEST TYPES ====================
+
+/**
+ * Client/Guest from Stays API
+ */
+export interface StaysClient {
+  _id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  document?: string;
+  documentType?: string;
+  birthDate?: string;
+  nationality?: string;
+  country?: string;
+  city?: string;
+  address?: string;
+  language?: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * Parameters for client search
+ */
+export interface GetClientsParams {
+  skip?: number;
+  limit?: number;
+  name?: string;
+  email?: string;
+  phone?: string;
+}
+
+// ==================== FINANCIAL SUMMARY TYPES ====================
+
+/**
+ * Financial summary for a period
+ */
+export interface FinancialSummary {
+  totalRevenue: number;
+  paidRevenue: number;
+  pendingRevenue: number;
+  averageDailyRate: number;
+  revPAR: number;
+  totalNights: number;
+  availableNights: number;
+  occupancyRate: number;
+  reservationsCount: number;
+  extraServicesRevenue: number;
+  period: {
+    from: string;
+    to: string;
+  };
+}
+
+/**
+ * Financial data by property
+ */
+export interface PropertyFinancials {
+  propertyCode: string;
+  propertyName: string | null;
+  revenue: number;
+  paidRevenue: number;
+  pendingRevenue: number;
+  bookingsCount: number;
+  nights: number;
+  averageDailyRate: number;
+  occupancyRate: number;
+}
+
+/**
+ * Financial data by channel/platform
+ */
+export interface ChannelFinancials {
+  channel: string;
+  revenue: number;
+  bookingsCount: number;
+  averageValue: number;
+  percentage: number;
+}
+
+// ==================== STATISTICS TYPES ====================
+
+/**
+ * Booking statistics summary
+ */
+export interface BookingStatistics {
+  totalBookings: number;
+  confirmedBookings: number;
+  canceledBookings: number;
+  blockedDates: number;
+  cancellationRate: number;
+  averageLeadTime: number;
+  averageStayLength: number;
+  totalGuests: number;
+  averageGuestsPerBooking: number;
+  bySource: Record<string, number>;
+  byMonth: Record<string, number>;
+  byDayOfWeek: Record<string, number>;
+}
+
+/**
+ * Occupancy data by property
+ */
+export interface OccupancyData {
+  propertyCode: string;
+  propertyName: string | null;
+  totalNights: number;
+  occupiedNights: number;
+  blockedNights: number;
+  availableNights: number;
+  occupancyRate: number;
+  blockRate: number;
+}
+
+/**
+ * Cancellation analysis
+ */
+export interface CancellationData {
+  totalCancellations: number;
+  cancellationRate: number;
+  averageAdvanceNotice: number;
+  byChannel: Record<string, number>;
+  byMonth: Record<string, number>;
+  revenueImpact: number;
+}
+
+// ==================== GUEST ANALYTICS TYPES ====================
+
+/**
+ * Returning guest data
+ */
+export interface ReturningGuest {
+  clientId: string;
+  name: string;
+  email?: string;
+  country?: string;
+  language?: string;
+  totalStays: number;
+  totalNights: number;
+  totalRevenue: number;
+  firstStay: string;
+  lastStay: string;
+  properties: string[];
+}
+
+/**
+ * Guest demographics summary
+ */
+export interface GuestDemographics {
+  byCountry: Record<string, number>;
+  byLanguage: Record<string, number>;
+  returningGuestsRate: number;
+  averageGroupSize: number;
+  withChildren: number;
+  withBabies: number;
+}
+
+// ==================== CALENDAR TYPES ====================
+
+/**
+ * Calendar day availability
+ */
+export interface CalendarDay {
+  date: string;
+  available: boolean;
+  blocked: boolean;
+  booked: boolean;
+  price?: number;
+  minStay?: number;
+  reservationId?: string;
+}
+
 /**
  * Guest status classification for dashboard
  */

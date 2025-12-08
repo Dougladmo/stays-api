@@ -153,15 +153,24 @@ export async function getDashboardData(): Promise<DashboardResponse> {
     const dateStr = format(day, 'yyyy-MM-dd');
     const dayOfWeek = format(day, 'EEE', { locale: ptBR }).toUpperCase();
 
+    // Normalize day to midnight for consistent date comparison
+    const dayAtMidnight = new Date(day);
+    dayAtMidnight.setHours(0, 0, 0, 0);
+
     // Find guests for this day
     const dayGuests: GuestData[] = [];
 
     weekBookings.forEach((booking) => {
+      // Parse dates and normalize to midnight for consistent comparison
       const checkInDate = parseISO(booking.checkInDate);
+      checkInDate.setHours(0, 0, 0, 0);
+
       const checkOutDate = parseISO(booking.checkOutDate);
+      checkOutDate.setHours(0, 0, 0, 0);
 
       // Check if booking overlaps with this day
-      if (isWithinInterval(day, { start: checkInDate, end: checkOutDate })) {
+      // A booking is active on a day if: checkInDate <= day <= checkOutDate
+      if (isWithinInterval(dayAtMidnight, { start: checkInDate, end: checkOutDate })) {
         const status = getGuestStatus(booking.checkInDate, booking.checkOutDate, day);
 
         dayGuests.push({
@@ -180,6 +189,16 @@ export async function getDashboardData(): Promise<DashboardResponse> {
           platformImage: booking.platformImage,
         });
       }
+    });
+
+    // Sort guests by status: CHECKOUT first (most urgent), then CHECKIN, then INHOUSE
+    dayGuests.sort((a, b) => {
+      const statusOrder: Record<GuestStatus, number> = {
+        checkout: 0, // Highest priority - appears first
+        checkin: 1,
+        staying: 2,
+      };
+      return statusOrder[a.status] - statusOrder[b.status];
     });
 
     return {
