@@ -56,10 +56,72 @@ async function createIndexes(): Promise<void> {
       { background: true }
     );
 
+    // Index for unified_bookings - optimizes listing queries
+    await db.collection('stays_unified_bookings').createIndex(
+      { listingId: 1 },
+      { background: true }
+    );
+
+    // Compound index for financial queries (date range + price)
+    await db.collection('stays_unified_bookings').createIndex(
+      { checkInDate: 1, priceValue: 1 },
+      { background: true }
+    );
+
     // Index for reservations - optimizes date range queries
     await db.collection('stays_reservations').createIndex(
       { checkOutDate: 1, checkInDate: 1 },
       { background: true }
+    );
+
+    // Index for reservations - optimizes listing queries
+    await db.collection('stays_reservations').createIndex(
+      { listingId: 1 },
+      { background: true }
+    );
+
+    // ============ INVENTORY INDEXES ============
+
+    // inventory_items indexes
+    await db.collection('inventory_items').createIndex(
+      { name: 1 },
+      { background: true }
+    );
+    await db.collection('inventory_items').createIndex(
+      { category: 1 },
+      { background: true }
+    );
+    await db.collection('inventory_items').createIndex(
+      { updatedAt: -1 },
+      { background: true }
+    );
+
+    // inventory_transactions indexes
+    await db.collection('inventory_transactions').createIndex(
+      { itemId: 1, timestamp: -1 },
+      { background: true }
+    );
+    await db.collection('inventory_transactions').createIndex(
+      { timestamp: -1 },
+      { background: true }
+    );
+    await db.collection('inventory_transactions').createIndex(
+      { user: 1 },
+      { background: true }
+    );
+
+    // Reference collections indexes (unique for sync upserts)
+    await db.collection('inventory_reference_categories').createIndex(
+      { staysCategoryId: 1 },
+      { unique: true, background: true }
+    );
+    await db.collection('inventory_reference_items').createIndex(
+      { staysItemId: 1 },
+      { unique: true, background: true }
+    );
+    await db.collection('inventory_reference_conditions').createIndex(
+      { staysConditionId: 1 },
+      { unique: true, background: true }
     );
 
     console.log('📇 MongoDB indexes created');
@@ -85,10 +147,17 @@ export function getDb(): Db {
 export function getCollections() {
   const database = getDb();
   return {
+    // Stays booking collections
     listings: database.collection('stays_listings'),
     reservations: database.collection('stays_reservations'),
     unifiedBookings: database.collection('stays_unified_bookings'),
     syncStatus: database.collection('stays_sync_status'),
+    // Inventory collections
+    inventoryItems: database.collection('inventory_items'),
+    inventoryTransactions: database.collection('inventory_transactions'),
+    inventoryRefCategories: database.collection('inventory_reference_categories'),
+    inventoryRefItems: database.collection('inventory_reference_items'),
+    inventoryRefConditions: database.collection('inventory_reference_conditions'),
   };
 }
 

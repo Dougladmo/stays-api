@@ -13,7 +13,10 @@ import type {
   StaysExtraService,
   StaysClient,
   GetClientsParams,
-  CalendarDay
+  CalendarDay,
+  StaysInventoryCategory,
+  StaysInventoryItem,
+  StaysInventoryCondition
 } from './types.js';
 
 /**
@@ -332,6 +335,53 @@ export class StaysApiClient {
     }
 
     return response.json() as Promise<StaysBooking[]>;
+  }
+
+  // ==================== INVENTORY REFERENCE API ====================
+
+  /**
+   * Retrieves inventory categories from Stays.net translation endpoint
+   * Returns list of standard categories with multilingual titles
+   */
+  async getInventoryCategories(): Promise<StaysInventoryCategory[]> {
+    try {
+      return await this.get<StaysInventoryCategory[]>(
+        '/external/v1/translation/inventory-categories'
+      );
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch inventory categories:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Retrieves inventory item types from Stays.net translation endpoint
+   * Returns list of standard item types with multilingual titles
+   */
+  async getInventoryItems(): Promise<StaysInventoryItem[]> {
+    try {
+      return await this.get<StaysInventoryItem[]>(
+        '/external/v1/translation/inventory-items'
+      );
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch inventory items:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Retrieves inventory item conditions from Stays.net translation endpoint
+   * Returns list of condition states with multilingual titles
+   */
+  async getInventoryConditions(): Promise<StaysInventoryCondition[]> {
+    try {
+      return await this.get<StaysInventoryCondition[]>(
+        '/external/v1/translation/inventory-items-conditions'
+      );
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch inventory conditions:', error);
+      return [];
+    }
   }
 }
 
