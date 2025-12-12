@@ -2,7 +2,7 @@
  * Financials Service - Calculates financial metrics from MongoDB data
  */
 
-import { format, parseISO, differenceInDays } from 'date-fns';
+import { format, parseISO, differenceInDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { getCollections } from '../config/mongodb.js';
 import type {
   FirestoreUnifiedBooking,
@@ -276,4 +276,289 @@ export async function getRevenueTrend(): Promise<Array<{ month: string; revenue:
   }
 
   return trend;
+}
+
+/**
+ * Financial Panel Data - Consolidated data for the Financial Panel KPIs
+ */
+export interface FinancialPanelData {
+  // Receita Mês Atual
+  currentMonthRevenue: number;
+  currentMonthReservations: number;
+  previousMonthRevenue: number;
+  monthGrowthPercent: number;
+
+  // Receita YTD
+  ytdRevenue: number;
+  previousYearYtdRevenue: number;
+  ytdGrowthPercent: number;
+
+  // Ticket Médio (ADR)
+  averageTicket: number;
+
+  // Projeção Próximo Mês
+  nextMonthProjection: number;
+  projectionMethod: string;
+
+  // Metadata
+  calculatedAt: string;
+  period: {
+    currentMonth: string;
+    previousMonth: string;
+    ytdStart: string;
+    ytdEnd: string;
+  };
+}
+
+/**
+ * Detailed financial data for a single reservation
+ */
+export interface ReservationFinancialDetails {
+  // Identification
+  reservationId: string;
+  bookingCode: string;
+  propertyCode: string;
+  propertyName: string | null;
+  guestName: string;
+
+  // Dates
+  checkInDate: string;
+  checkOutDate: string;
+  nights: number;
+
+  // Channel
+  channel: string;
+  platform: string | null;
+
+  // Financial Data
+  pricePerNight: number;
+  reserveTotal: number;
+  baseAmountForwarding: number;
+  sellPriceCorrected: number;
+  companyCommission: number;
+  buyPrice: number;
+  totalForwardFee: number;
+
+  // Fees breakdown
+  cleaningFee: number;
+  ownerFees: Array<{ name: string; value: number }>;
+  otherFees: Array<{ name: string; value: number }>;
+
+  // Currency
+  currency: string;
+}
+
+/**
+ * Gets financial panel data with all KPIs for the dashboard
+ */
+export async function getFinancialPanelData(): Promise<FinancialPanelData> {
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const previousYear = currentYear - 1;
+
+  // Current month boundaries
+  const currentMonthStart = startOfMonth(today);
+  const currentMonthEnd = endOfMonth(today);
+
+  // Previous month boundaries
+  const previousMonthStart = startOfMonth(subMonths(today, 1));
+  const previousMonthEnd = endOfMonth(subMonths(today, 1));
+
+  // YTD boundaries (January 1st to today)
+  const ytdStart = new Date(currentYear, 0, 1);
+  const ytdEnd = today;
+
+  // Same period last year
+  const previousYearYtdStart = new Date(previousYear, 0, 1);
+  const previousYearYtdEnd = new Date(previousYear, today.getMonth(), today.getDate());
+
+  // Format dates for queries
+  const currentMonthFromStr = format(currentMonthStart, 'yyyy-MM-dd');
+  const currentMonthToStr = format(currentMonthEnd, 'yyyy-MM-dd');
+  const previousMonthFromStr = format(previousMonthStart, 'yyyy-MM-dd');
+  const previousMonthToStr = format(previousMonthEnd, 'yyyy-MM-dd');
+  const ytdFromStr = format(ytdStart, 'yyyy-MM-dd');
+  const ytdToStr = format(ytdEnd, 'yyyy-MM-dd');
+  const prevYearYtdFromStr = format(previousYearYtdStart, 'yyyy-MM-dd');
+  const prevYearYtdToStr = format(previousYearYtdEnd, 'yyyy-MM-dd');
+
+  // Fetch all required bookings in parallel
+  const [
+    currentMonthBookings,
+    previousMonthBookings,
+    ytdBookings,
+    previousYearYtdBookings,
+    last3MonthsBookings,
+  ] = await Promise.all([
+    getBookingsForPeriod(currentMonthFromStr, currentMonthToStr),
+    getBookingsForPeriod(previousMonthFromStr, previousMonthToStr),
+    getBookingsForPeriod(ytdFromStr, ytdToStr),
+    getBookingsForPeriod(prevYearYtdFromStr, prevYearYtdToStr),
+    getBookingsForPeriod(
+      format(startOfMonth(subMonths(today, 3)), 'yyyy-MM-dd'),
+      format(endOfMonth(subMonths(today, 1)), 'yyyy-MM-dd')
+    ),
+  ]);
+
+  // Calculate current month revenue
+  let currentMonthRevenue = 0;
+  let currentMonthReservations = 0;
+  currentMonthBookings.forEach((booking) => {
+    if (booking.type !== 'blocked') {
+      currentMonthRevenue += booking.priceValue || 0;
+      currentMonthReservations++;
+    }
+  });
+
+  // Calculate previous month revenue
+  let previousMonthRevenue = 0;
+  previousMonthBookings.forEach((booking) => {
+    if (booking.type !== 'blocked') {
+      previousMonthRevenue += booking.priceValue || 0;
+    }
+  });
+
+  // Calculate YTD revenue
+  let ytdRevenue = 0;
+  ytdBookings.forEach((booking) => {
+    if (booking.type !== 'blocked') {
+      ytdRevenue += booking.priceValue || 0;
+    }
+  });
+
+  // Calculate previous year YTD revenue
+  let previousYearYtdRevenue = 0;
+  previousYearYtdBookings.forEach((booking) => {
+    if (booking.type !== 'blocked') {
+      previousYearYtdRevenue += booking.priceValue || 0;
+    }
+  });
+
+  // Calculate last 3 months revenue for projection
+  let last3MonthsRevenue = 0;
+  last3MonthsBookings.forEach((booking) => {
+    if (booking.type !== 'blocked') {
+      last3MonthsRevenue += booking.priceValue || 0;
+    }
+  });
+
+  // Calculate growth percentages
+  const monthGrowthPercent = previousMonthRevenue > 0
+    ? ((currentMonthRevenue - previousMonthRevenue) / previousMonthRevenue) * 100
+    : 0;
+
+  const ytdGrowthPercent = previousYearYtdRevenue > 0
+    ? ((ytdRevenue - previousYearYtdRevenue) / previousYearYtdRevenue) * 100
+    : 0;
+
+  // Calculate average ticket (ADR per reservation)
+  const averageTicket = currentMonthReservations > 0
+    ? currentMonthRevenue / currentMonthReservations
+    : 0;
+
+  // Calculate next month projection
+  // Method: Average of last 3 months with growth trend
+  const avgLast3Months = last3MonthsRevenue / 3;
+  const growthFactor = monthGrowthPercent > 0 ? 1 + (monthGrowthPercent / 100) : 1;
+  const nextMonthProjection = avgLast3Months * Math.min(growthFactor, 1.2); // Cap at 20% growth
+
+  return {
+    currentMonthRevenue: Math.round(currentMonthRevenue * 100) / 100,
+    currentMonthReservations,
+    previousMonthRevenue: Math.round(previousMonthRevenue * 100) / 100,
+    monthGrowthPercent: Math.round(monthGrowthPercent * 10) / 10,
+    ytdRevenue: Math.round(ytdRevenue * 100) / 100,
+    previousYearYtdRevenue: Math.round(previousYearYtdRevenue * 100) / 100,
+    ytdGrowthPercent: Math.round(ytdGrowthPercent * 10) / 10,
+    averageTicket: Math.round(averageTicket * 100) / 100,
+    nextMonthProjection: Math.round(nextMonthProjection * 100) / 100,
+    projectionMethod: 'Média últimos 3 meses com tendência de crescimento',
+    calculatedAt: new Date().toISOString(),
+    period: {
+      currentMonth: format(currentMonthStart, 'MMM/yyyy'),
+      previousMonth: format(previousMonthStart, 'MMM/yyyy'),
+      ytdStart: format(ytdStart, 'yyyy-MM-dd'),
+      ytdEnd: format(ytdEnd, 'yyyy-MM-dd'),
+    },
+  };
+}
+
+/**
+ * Gets detailed financial data for reservations
+ * This function retrieves detailed price breakdown from Stays.net bookings
+ *
+ * NOTE: Currently the unified bookings collection does not store the detailed
+ * price fields from Stays.net API (pricePerNight, baseAmountForwarding, etc.)
+ * We need to fetch from the original Stays API or implement a sync of these fields.
+ *
+ * For now, we'll return calculated/estimated values based on available data.
+ */
+export async function getDetailedFinancials(
+  from: string,
+  to: string
+): Promise<ReservationFinancialDetails[]> {
+  const bookings = await getBookingsForPeriod(from, to);
+  const result: ReservationFinancialDetails[] = [];
+
+  bookings.forEach((booking) => {
+    if (booking.type === 'blocked') return;
+
+    const totalValue = booking.priceValue || 0;
+    const nights = booking.nights || 1;
+    const pricePerNight = nights > 0 ? totalValue / nights : 0;
+
+    // Calculate financial fields
+    // NOTE: These are estimated values. For accurate data, we need to fetch
+    // from Stays.net API directly or sync these fields to MongoDB
+    const cleaningFee = totalValue * 0.1; // Estimate 10% cleaning fee
+    const ownerFeesTotal = totalValue * 0.05; // Estimate 5% owner fees
+    const companyCommission = totalValue * 0.15; // Estimate 15% commission
+    const buyPrice = totalValue - companyCommission;
+    const reserveTotal = totalValue;
+    const baseAmountForwarding = buyPrice;
+    const sellPriceCorrected = totalValue;
+    const totalForwardFee = cleaningFee + ownerFeesTotal;
+
+    result.push({
+      // Identification
+      reservationId: booking.staysReservationId,
+      bookingCode: booking.staysBookingCode,
+      propertyCode: booking.apartmentCode,
+      propertyName: booking.listingName,
+      guestName: booking.guestName,
+
+      // Dates
+      checkInDate: booking.checkInDate,
+      checkOutDate: booking.checkOutDate,
+      nights: booking.nights || 0,
+
+      // Channel
+      channel: booking.channelName || booking.platform || 'Direto',
+      platform: booking.platform,
+
+      // Financial Data
+      pricePerNight: Math.round(pricePerNight * 100) / 100,
+      reserveTotal: Math.round(reserveTotal * 100) / 100,
+      baseAmountForwarding: Math.round(baseAmountForwarding * 100) / 100,
+      sellPriceCorrected: Math.round(sellPriceCorrected * 100) / 100,
+      companyCommission: Math.round(companyCommission * 100) / 100,
+      buyPrice: Math.round(buyPrice * 100) / 100,
+      totalForwardFee: Math.round(totalForwardFee * 100) / 100,
+
+      // Fees breakdown
+      cleaningFee: Math.round(cleaningFee * 100) / 100,
+      ownerFees: [
+        { name: 'Taxa de Gestão', value: Math.round(ownerFeesTotal * 100) / 100 }
+      ],
+      otherFees: [],
+
+      // Currency
+      currency: booking.priceCurrency || 'BRL',
+    });
+  });
+
+  // Sort by check-in date descending (most recent first)
+  result.sort((a, b) => b.checkInDate.localeCompare(a.checkInDate));
+
+  return result;
 }

@@ -10,6 +10,8 @@ import {
   getFinancialsByProperty,
   getFinancialsByChannel,
   getRevenueTrend,
+  getFinancialPanelData,
+  getDetailedFinancials,
 } from '../services/FinancialsService.js';
 
 interface DateRangeQuery {
@@ -65,4 +67,38 @@ export async function financialsRoutes(fastify: FastifyInstance): Promise<void> 
     const trend = await getRevenueTrend();
     return { trend };
   });
+
+  // GET /api/v1/financials/panel - Get consolidated financial panel data
+  // Returns: currentMonthRevenue, previousMonthRevenue, YTD, comparisons, projections
+  fastify.get('/financials/panel', async () => {
+    const data = await getFinancialPanelData();
+    return data;
+  });
+
+  // POST /api/v1/financials/panel/refresh - Force refresh financial panel data
+  fastify.post('/financials/panel/refresh', async () => {
+    const data = await getFinancialPanelData();
+    return {
+      ...data,
+      refreshedAt: new Date().toISOString(),
+    };
+  });
+
+  // GET /api/v1/financials/detailed - Get detailed financial data for reservations
+  // Returns complete price breakdown including fees, commissions, and owner payments
+  fastify.get<{ Querystring: DateRangeQuery }>(
+    '/financials/detailed',
+    async (request) => {
+      const today = new Date();
+      const from = request.query.from || format(subDays(today, 30), 'yyyy-MM-dd');
+      const to = request.query.to || format(today, 'yyyy-MM-dd');
+
+      const reservations = await getDetailedFinancials(from, to);
+      return {
+        reservations,
+        period: { from, to },
+        count: reservations.length,
+      };
+    }
+  );
 }

@@ -14,25 +14,81 @@ export type BookingType = 'normal' | 'provisional' | 'blocked';
 export type DateType = 'arrival' | 'departure' | 'creation' | 'creationorig' | 'included';
 
 /**
- * Booking price information
+ * Hosting details fee
+ */
+export interface HostingFee {
+  name: string;
+  _f_val: number;
+}
+
+/**
+ * Hosting details section
+ */
+export interface HostingDetails {
+  fees: HostingFee[];
+  discounts: unknown[];
+  _f_nightPrice: number;
+  _f_total: number;
+}
+
+/**
+ * Extras details section
+ */
+export interface ExtrasDetails {
+  fees: unknown[];
+  extraServices: unknown[];
+  discounts: unknown[];
+  _f_total: number;
+}
+
+/**
+ * Fee structure from Stays.net API
+ */
+export interface StaysFee {
+  val: number;
+  name?: string;
+  description?: string;
+}
+
+/**
+ * Booking price information - Updated to match actual Stays API response
  */
 export interface BookingPrice {
   currency: string;
-  value: number;
+  // New fields from actual API
+  _f_expected?: number;  // Total nights value
+  _f_total?: number;     // Total including fees
+  hostingDetails?: HostingDetails;
+  extrasDetails?: ExtrasDetails;
+  // Financial detailed fields (from Stays.net API)
+  pricePerNight?: number;          // Valor por noite
+  reserveTotal?: number;            // Total da reserva
+  baseAmountForwarding?: number;    // Base de cálculo do Imposto
+  sellPriceCorrected?: number;      // Preço de venda corrigido
+  companyCommision?: number;        // Comissão da empresa
+  buyPrice?: number;                // Preço de compra
+  totalForwardFee?: number;         // Total de taxas repassadas
+  fee?: StaysFee[];                 // Taxas (limpeza, etc)
+  ownerFee?: StaysFee[];            // Taxas do proprietário
+  // Legacy fields (kept for backward compatibility)
+  value?: number;
   cleaning?: number;
   securityDeposit?: number;
   extras?: number;
 }
 
 /**
- * Booking statistics
+ * Booking statistics - Updated to match actual Stays API response
  */
 export interface BookingStats {
-  nights: number;
-  pricePerNight: number;
-  adults: number;
-  children: number;
-  babies: number;
+  // New field from actual API
+  _f_totalPaid?: number;  // Total paid amount
+  // Legacy fields (kept for backward compatibility)
+  nights?: number;
+  pricePerNight?: number;
+  adults?: number;
+  children?: number;
+  babies?: number;
 }
 
 /**
@@ -253,6 +309,50 @@ export interface FinancialSummary {
 }
 
 /**
+ * Detailed financial data for a single reservation
+ */
+export interface ReservationFinancialDetails {
+  // Identification
+  reservationId: string;
+  bookingCode: string;
+  propertyCode: string;
+  propertyName: string | null;
+  guestName: string;
+
+  // Dates
+  checkInDate: string;
+  checkOutDate: string;
+  nights: number;
+
+  // Channel
+  channel: string;
+  platform: string | null;
+
+  // Financial Data
+  pricePerNight: number;           // Valor por noite
+  reserveTotal: number;            // Total da reserva
+  baseAmountForwarding: number;    // Base de cálculo do Imp
+  sellPriceCorrected: number;      // Preço de venda corrigido
+  companyCommission: number;       // Comissão da empresa
+  buyPrice: number;                // Preço de compra
+  totalForwardFee: number;         // Total de taxas
+
+  // Fees breakdown
+  cleaningFee: number;             // Taxa de Limpeza
+  ownerFees: Array<{               // Taxas do proprietário
+    name: string;
+    value: number;
+  }>;
+  otherFees: Array<{               // Outras taxas
+    name: string;
+    value: number;
+  }>;
+
+  // Currency
+  currency: string;
+}
+
+/**
  * Financial data by property
  */
 export interface PropertyFinancials {
@@ -470,4 +570,164 @@ export interface FirestoreUnifiedBooking {
   createdAt: Date;
   updatedAt: Date;
   syncedAt: Date;
+}
+
+// ==================== INVENTORY REFERENCE TYPES ====================
+
+/**
+ * Inventory category from Stays.net translation endpoint
+ */
+export interface StaysInventoryCategory {
+  _id: string;
+  _mstitle: Record<string, string>; // { 'pt_BR': 'Enxoval', 'en_US': 'Linen' }
+}
+
+/**
+ * Inventory item type from Stays.net translation endpoint
+ */
+export interface StaysInventoryItem {
+  _id: string;
+  _mstitle: Record<string, string>;
+  categoryId?: string;
+}
+
+/**
+ * Inventory item condition from Stays.net translation endpoint
+ */
+export interface StaysInventoryCondition {
+  _id: string;
+  _mstitle: Record<string, string>;
+}
+
+// ==================== INVENTORY DOCUMENT TYPES ====================
+
+/**
+ * Inventory category enum (matching centralcasape types.ts)
+ */
+export type InventoryCategory = 'LINEN' | 'ELECTRONICS' | 'AMENITY' | 'FURNITURE' | 'UTENSIL' | 'OTHER';
+
+/**
+ * Transaction type enum (matching centralcasape types.ts)
+ */
+export type TransactionType = 'PURCHASE' | 'TRANSFER' | 'CONSUMPTION' | 'BREAKAGE' | 'LOSS' | 'ADJUSTMENT';
+
+/**
+ * Inventory item document stored in MongoDB
+ */
+export interface InventoryItemDoc {
+  _id: string;
+  id: string;
+  name: string;
+  brand?: string;
+  model?: string;
+  dimensions?: string;
+  description?: string;
+  category: InventoryCategory;
+  minStock: number;
+  stock: Record<string, number>; // { 'CENTRAL': 10, 'I-VP-455': 2 }
+  staysReferenceItemId?: string;
+  staysReferenceCategoryId?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Inventory transaction document stored in MongoDB
+ */
+export interface InventoryTransactionDoc {
+  _id: string;
+  id: string;
+  itemId: string;
+  itemName: string;
+  type: TransactionType;
+  quantity: number;
+  source: string;
+  destination: string;
+  user: string;
+  notes?: string;
+  timestamp: Date;
+  createdAt: Date;
+}
+
+/**
+ * Reference category document (synced from Stays.net)
+ */
+export interface InventoryReferenceCategory {
+  _id: string;
+  staysCategoryId: string;
+  titles: Record<string, string>;
+  titlePtBr: string;
+  syncedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Reference item document (synced from Stays.net)
+ */
+export interface InventoryReferenceItem {
+  _id: string;
+  staysItemId: string;
+  titles: Record<string, string>;
+  titlePtBr: string;
+  categoryId?: string;
+  syncedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Reference condition document (synced from Stays.net)
+ */
+export interface InventoryReferenceCondition {
+  _id: string;
+  staysConditionId: string;
+  titles: Record<string, string>;
+  titlePtBr: string;
+  syncedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Input for creating a new inventory item
+ */
+export interface CreateInventoryItemInput {
+  name: string;
+  brand?: string;
+  model?: string;
+  dimensions?: string;
+  description?: string;
+  category: InventoryCategory;
+  minStock: number;
+  stock?: Record<string, number>;
+  staysReferenceItemId?: string;
+  staysReferenceCategoryId?: string;
+}
+
+/**
+ * Input for updating an inventory item
+ */
+export interface UpdateInventoryItemInput {
+  name?: string;
+  brand?: string;
+  model?: string;
+  dimensions?: string;
+  description?: string;
+  category?: InventoryCategory;
+  minStock?: number;
+  stock?: Record<string, number>;
+}
+
+/**
+ * Input for creating a transaction
+ */
+export interface CreateTransactionInput {
+  itemId: string;
+  type: TransactionType;
+  quantity: number;
+  source: string;
+  destination: string;
+  user: string;
+  notes?: string;
 }

@@ -21,6 +21,56 @@ const LISTING_DETAILS_CONCURRENCY = 10;
 const LISTING_DETAILS_DELAY = 200; // ms between batches
 
 /**
+ * Extracts total price from booking using multiple fallback strategies
+ * Updated to match actual Stays.net API response format:
+ * - price._f_total (total including fees)
+ * - price._f_expected (nights value)
+ * - price.hostingDetails._f_total
+ * - stats._f_totalPaid (total paid)
+ */
+function extractTotalPrice(booking: StaysBooking): number | null {
+  // Strategy 1: Use _f_total from price (most reliable - includes all fees)
+  if (booking.price?._f_total && booking.price._f_total > 0) {
+    return booking.price._f_total;
+  }
+
+  // Strategy 2: Use _f_totalPaid from stats (actual paid amount)
+  if (booking.stats?._f_totalPaid && booking.stats._f_totalPaid > 0) {
+    return booking.stats._f_totalPaid;
+  }
+
+  // Strategy 3: Use hostingDetails._f_total
+  if (booking.price?.hostingDetails?._f_total && booking.price.hostingDetails._f_total > 0) {
+    const hostingTotal = booking.price.hostingDetails._f_total;
+    const extrasTotal = booking.price.extrasDetails?._f_total || 0;
+    return hostingTotal + extrasTotal;
+  }
+
+  // Strategy 4: Use _f_expected (just nights, without fees)
+  if (booking.price?._f_expected && booking.price._f_expected > 0) {
+    return booking.price._f_expected;
+  }
+
+  // Strategy 5: Legacy fallback - direct price value
+  if (booking.price?.value && booking.price.value > 0) {
+    return booking.price.value;
+  }
+
+  // Strategy 6: Legacy fallback - sum components
+  if (booking.price) {
+    const baseValue = booking.price.value || 0;
+    const cleaning = booking.price.cleaning || 0;
+    const extras = booking.price.extras || 0;
+    const total = baseValue + cleaning + extras;
+    if (total > 0) {
+      return total;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Updates the sync status in MongoDB
  */
 async function updateSyncStatus(
@@ -225,7 +275,7 @@ async function writeReservationsToMongo(
             checkOutDate: booking.checkOutDate,
             checkOutTime: booking.checkOutTime || null,
             guestName,
-            guestCount: booking.guests || booking.stats?.adults + booking.stats?.children + booking.stats?.babies || 0,
+            guestCount: booking.guests || ((booking.stats?.adults || 0) + (booking.stats?.children || 0) + (booking.stats?.babies || 0)) || 0,
             adults: booking.stats?.adults || 0,
             children: booking.stats?.children || 0,
             babies: booking.stats?.babies || 0,
@@ -234,8 +284,8 @@ async function writeReservationsToMongo(
             channelName: booking.channelName || null,
             source: booking.source || null,
             status: booking.status || null,
-            priceValue: booking.price?.value || null,
-            priceCurrency: booking.price?.currency || null,
+            priceValue: extractTotalPrice(booking),
+            priceCurrency: booking.price?.currency || 'BRL',
             updatedAt: now,
             syncedAt: now,
           },
@@ -334,7 +384,7 @@ function getPlatformImage(platform: string | null): string {
   const platformImageMap: Record<string, string> = {
     'airbnb': '/images/platforms/airbnb.png',
     'api airbnb': '/images/platforms/airbnb.png',
-    'booking': '/images/platforms/booking.png',
+    'booking': '/images/platforms/booking.svg',
     'booking.com': '/images/platforms/booking.png',
     'expedia': '/images/platforms/expedia.png',
     'vrbo': '/images/platforms/vrbo.png',
@@ -458,9 +508,9 @@ async function writeUnifiedBookingsToMongo(
             channelName: booking.channelName || null,
             source: booking.source || null,
 
-            // Price
-            priceValue: booking.price?.value || null,
-            priceCurrency: booking.price?.currency || null,
+            // Price - extracted with multiple fallback strategies
+            priceValue: extractTotalPrice(booking),
+            priceCurrency: booking.price?.currency || 'BRL',
 
             // Timestamps
             updatedAt: now,
