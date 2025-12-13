@@ -6,7 +6,7 @@
 import { createServer } from './server.js';
 import { config } from './config/env.js';
 import { connectMongoDB, closeMongoDB } from './config/mongodb.js';
-import { startScheduler, runInitialSync } from './jobs/scheduler.js';
+import { startScheduler, runInitialSync, startPropertySyncScheduler } from './jobs/scheduler.js';
 
 async function main() {
   console.log('🚀 Starting Stays API...');
@@ -38,8 +38,11 @@ async function main() {
       console.error('❌ Initial sync failed:', error);
     });
 
-    // Start the scheduler
+    // Start the booking sync scheduler
     startScheduler();
+
+    // Start the property sync scheduler
+    startPropertySyncScheduler();
 
     // Graceful shutdown
     const shutdown = async (signal: string) => {

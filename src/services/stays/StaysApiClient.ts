@@ -16,7 +16,9 @@ import type {
   CalendarDay,
   StaysInventoryCategory,
   StaysInventoryItem,
-  StaysInventoryCondition
+  StaysInventoryCondition,
+  StaysAmenity,
+  EnhancedListingDetails
 } from './types.js';
 
 /**
@@ -382,6 +384,83 @@ export class StaysApiClient {
       console.warn('⚠️ Failed to fetch inventory conditions:', error);
       return [];
     }
+  }
+
+  // ==================== PROPERTY/AMENITIES API ====================
+
+  /**
+   * Retrieves all available amenities with multilingual titles
+   * Used for enriching property data with translated amenity names
+   */
+  async getAmenities(): Promise<StaysAmenity[]> {
+    try {
+      return await this.get<StaysAmenity[]>(
+        '/external/v1/translations/listing-amenities'
+      );
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch amenities:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Retrieves global custom fields configuration for listings
+   * These are user-defined fields like WiFi, door codes, etc.
+   */
+  async getListingCustomFields(): Promise<any[]> {
+    try {
+      return await this.get<any[]>(
+        '/external/v1/settings/global/listing-custom-fields'
+      );
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch custom fields:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Retrieves comprehensive listing details for a single property
+   * Includes all property metadata: amenities, images, pricing, descriptions, custom fields
+   */
+  async getEnhancedListingDetails(listingId: string): Promise<EnhancedListingDetails> {
+    return this.get<EnhancedListingDetails>(
+      `/external/v1/content/listings/${listingId}`
+    );
+  }
+
+  /**
+   * Retrieves all property listings with full details and automatic pagination
+   * Fetches comprehensive property data including amenities, images, pricing, and custom fields
+   */
+  async getAllEnhancedListings(): Promise<EnhancedListingDetails[]> {
+    const allListings: EnhancedListingDetails[] = [];
+    let skip = 0;
+    const limit = 20;
+    let hasMore = true;
+
+    console.log('📥 Fetching all enhanced property listings...');
+
+    while (hasMore) {
+      const listings = await this.get<EnhancedListingDetails[]>(
+        '/external/v1/content/listings',
+        {
+          skip: String(skip),
+          limit: String(limit)
+        }
+      );
+
+      allListings.push(...listings);
+      hasMore = listings.length === limit;
+      skip += limit;
+
+      if (skip > 500) {
+        console.warn('⚠️ Reached safety limit of 500 properties');
+        break;
+      }
+    }
+
+    console.log(`✅ Fetched ${allListings.length} enhanced property listings`);
+    return allListings;
   }
 }
 

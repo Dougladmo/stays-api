@@ -731,3 +731,156 @@ export interface CreateTransactionInput {
   user: string;
   notes?: string;
 }
+
+// ==================== PROPERTY/LISTING TYPES ====================
+
+/**
+ * Amenity from Stays.net translation API
+ */
+export interface StaysAmenity {
+  _id: string;
+  _mstitle: Record<string, string>; // { 'pt_BR': 'WiFi', 'en_US': 'WiFi' }
+  category?: string;
+  icon?: string;
+}
+
+/**
+ * Image from listing
+ */
+export interface ListingImage {
+  url: string;
+  caption?: string;
+  order: number;
+  _id?: string;
+}
+
+/**
+ * Property pricing details
+ */
+export interface PropertyPricing {
+  basePricePerNight: number;
+  currency: string;
+  cleaningFee?: number;
+  weeklyDiscount?: number;
+  monthlyDiscount?: number;
+  minimumStay?: number;
+}
+
+/**
+ * Property location details
+ */
+export interface PropertyLocation {
+  latitude?: number;
+  longitude?: number;
+  city?: string;
+  state?: string;
+  country?: string;
+  postalCode?: string;
+}
+
+/**
+ * Enhanced listing details with full property data from Stays.net API
+ * Exact structure as returned by /external/v1/content/listings
+ */
+export interface EnhancedListingDetails {
+  // Core IDs
+  _id: string;                    // MongoDB ObjectId
+  id: string;                     // Short ID (e.g., "TW01H")
+  _idproperty?: string;
+  _idtype?: string;
+  internalName?: string;           // e.g., "L-VF-230-106 | LEB General Venâncio Flores 230/106"
+  status?: string;                // "active" | "inactive"
+
+  // Multilingual fields
+  _mstitle?: Record<string, string>;  // { 'pt_BR': '...', 'en_US': '...', 'es_ES': '...' }
+  _msdesc?: Record<string, string>;   // Multilingual descriptions
+
+  // Property specs
+  _i_maxGuests?: number;
+  _i_rooms?: number;              // Bedroom count
+  _i_beds?: number;               // Total beds
+  _f_bathrooms?: number;
+  _f_square?: number;             // Square meters
+  deff_curr?: string;             // Default currency (e.g., "BRL")
+  _f_commercialPriority?: number;
+
+  // Address structure
+  address?: {
+    countryCode?: string;
+    state?: string;
+    stateCode?: string;
+    city?: string;
+    region?: string;
+    street?: string;
+    streetNumber?: string;
+    additional?: string;
+    zip?: string;
+  };
+
+  // Location coordinates
+  latLng?: {
+    _f_lat: number;
+    _f_lng: number;
+  };
+
+  // Main image
+  _idmainImage?: string;
+  _t_mainImageMeta?: {
+    url: string;
+  };
+
+  // Type metadata
+  _t_propertyTypeMeta?: {
+    _mstitle?: Record<string, string>;
+  };
+  _t_typeMeta?: {
+    _mstitle?: Record<string, string>;
+  };
+
+  // Channels and features
+  subtype?: string;
+  instantBooking?: boolean;
+  groupIds?: string[];
+  otaChannels?: Array<{
+    name: string;
+  }>;
+}
+
+/**
+ * Property document in MongoDB
+ */
+export interface PropertyDocument {
+  _id: string;
+  staysListingId: string;
+  internalName: string;
+  name: string;
+  address: string;
+  rooms: number;
+  beds: number;
+  bathrooms: number;
+  squareFeet: number | null;
+  maxGuests: number;
+  amenities: PropertyAmenity[];
+  mainImage: ListingImage | null;
+  images: ListingImage[];
+  pricing: PropertyPricing | null;
+  descriptions: Record<string, string>;
+  customFields: Record<string, any>;
+  location: PropertyLocation | null;
+  active: boolean;
+  listed: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  syncedAt: Date;
+}
+
+/**
+ * Amenity with translations
+ */
+export interface PropertyAmenity {
+  staysAmenityId: string;
+  name: string;
+  namePtBr: string;
+  category: string;
+  icon: string | null;
+}

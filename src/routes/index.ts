@@ -12,6 +12,7 @@ import { statisticsRoutes } from './statistics.js';
 import { guestsRoutes } from './guests.js';
 import { unifiedRoutes } from './unified.js';
 import { inventoryRoutes } from './inventory.js';
+import { propertiesRoutes } from './properties.js';
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   // Health routes (no prefix, no auth)
@@ -28,6 +29,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
       await api.register(guestsRoutes);
       await api.register(unifiedRoutes);
       await api.register(inventoryRoutes);
+      await api.register(propertiesRoutes);
     },
     { prefix: '/api/v1' }
   );

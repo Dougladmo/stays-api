@@ -1,13 +1,15 @@
 /**
  * Cron Job Scheduler
- * Handles periodic sync from Stays.net API to Firestore
+ * Handles periodic sync from Stays.net API to MongoDB
  */
 
 import cron from 'node-cron';
 import { syncStaysData, getSyncStatus } from '../services/sync/SyncService.js';
+import { syncPropertiesData, getPropertySyncStatus } from '../services/sync/PropertySyncService.js';
 import { config } from '../config/env.js';
 
 let syncJob: cron.ScheduledTask | null = null;
+let propertySyncJob: cron.ScheduledTask | null = null;
 
 /**
  * Starts the sync cron job
@@ -86,5 +88,44 @@ export async function runInitialSync(): Promise<void> {
     }
   } else {
     console.log('ℹ️ Skipping initial sync: recent data available');
+  }
+}
+
+/**
+ * Starts the property sync scheduler (daily at 3 AM)
+ */
+export function startPropertySyncScheduler(): void {
+  const cronExpression = '0 3 * * *'; // Daily at 3 AM
+
+  console.log('⏰ Starting property sync scheduler: daily at 3 AM');
+
+  propertySyncJob = cron.schedule(cronExpression, async () => {
+    console.log(`\n🏠 [${new Date().toISOString()}] Scheduled property sync triggered`);
+
+    const status = await getPropertySyncStatus();
+    if (status.status === 'running') {
+      console.log('⏭️ Skipping: property sync already in progress');
+      return;
+    }
+
+    try {
+      const result = await syncPropertiesData();
+      console.log('📊 Property sync result:', result);
+    } catch (error) {
+      console.error('❌ Scheduled property sync error:', error);
+    }
+  });
+
+  console.log('✅ Property sync scheduler started');
+}
+
+/**
+ * Stops the property sync scheduler
+ */
+export function stopPropertySyncScheduler(): void {
+  if (propertySyncJob) {
+    propertySyncJob.stop();
+    propertySyncJob = null;
+    console.log('⏹️ Property sync scheduler stopped');
   }
 }

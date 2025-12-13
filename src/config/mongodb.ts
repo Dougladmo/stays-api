@@ -124,6 +124,38 @@ async function createIndexes(): Promise<void> {
       { unique: true, background: true }
     );
 
+    // ============ PROPERTY INDEXES ============
+
+    // Unique index on staysListingId for upserts
+    await db.collection('stays_properties').createIndex(
+      { staysListingId: 1 },
+      { unique: true, background: true }
+    );
+
+    // Index on internalName (apartment code) for fast lookups
+    await db.collection('stays_properties').createIndex(
+      { internalName: 1 },
+      { background: true }
+    );
+
+    // Compound index for filtering by active/listed status
+    await db.collection('stays_properties').createIndex(
+      { active: 1, listed: 1 },
+      { background: true }
+    );
+
+    // Index for sorting by last update
+    await db.collection('stays_properties').createIndex(
+      { updatedAt: -1 },
+      { background: true }
+    );
+
+    // Text search index for name, address, and internalName
+    await db.collection('stays_properties').createIndex(
+      { name: 'text', address: 'text', internalName: 'text' },
+      { background: true }
+    );
+
     console.log('📇 MongoDB indexes created');
   } catch (error) {
     // Indexes might already exist, which is fine
@@ -158,6 +190,9 @@ export function getCollections() {
     inventoryRefCategories: database.collection('inventory_reference_categories'),
     inventoryRefItems: database.collection('inventory_reference_items'),
     inventoryRefConditions: database.collection('inventory_reference_conditions'),
+    // Property collections
+    properties: database.collection('stays_properties'),
+    propertySyncStatus: database.collection('stays_property_sync_status'),
   };
 }
 
