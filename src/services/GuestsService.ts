@@ -114,10 +114,12 @@ export async function getGuestDemographics(): Promise<GuestDemographics> {
     // Group size
     totalGroupSize += booking.guestCount || 1;
 
-    // Country/language would need to come from client data
-    // For now, using platform as a proxy for market
-    const platform = booking.platform || 'Direct';
-    byCountry.set(platform, (byCountry.get(platform) || 0) + 1);
+    // Use real guest country/language from enriched client data
+    const country = booking.guestCountry || 'Unknown';
+    const language = booking.guestLanguage || 'Unknown';
+
+    byCountry.set(country, (byCountry.get(country) || 0) + 1);
+    byLanguage.set(language, (byLanguage.get(language) || 0) + 1);
   });
 
   // Find returning guests (appear more than once)

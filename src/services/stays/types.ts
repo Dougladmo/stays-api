@@ -419,6 +419,7 @@ export interface CancellationData {
   totalCancellations: number;
   cancellationRate: number;
   averageAdvanceNotice: number;
+  averageAdvanceNoticeNote?: string; // Note about calculation method
   byChannel: Record<string, number>;
   byMonth: Record<string, number>;
   revenueImpact: number;
@@ -548,6 +549,7 @@ export interface FirestoreUnifiedBooking {
   checkOutDate: string;
   checkOutTime: string | null;
   nights: number;
+  creationDate: string | null; // Booking creation date (for lead time calculation)
 
   // Guest info
   guestName: string;
@@ -555,6 +557,23 @@ export interface FirestoreUnifiedBooking {
   adults: number;
   children: number;
   babies: number;
+
+  // Client demographics
+  clientId: string | null; // Stays.net client ID (for demographics lookup)
+  guestCountry: string | null; // Real guest country (from client API)
+  guestLanguage: string | null; // Real guest language (from client API)
+  guestNationality: string | null; // Real guest nationality (from client API)
+  guestEmail: string | null; // Guest email (from client API)
+  guestPhone: string | null; // Guest phone (from client API)
+
+  // Team assignment (Guest Relations)
+  responsibleId: string | null; // Guest Relations team member ID
+  responsibleName: string | null; // Guest Relations team member name
+
+  // Guest feedback
+  feedbackRating: number | null; // 1-5 rating
+  feedbackComment: string | null; // Guest comment
+  feedbackDate: Date | null; // When feedback was submitted
 
   // Platform/Source
   platform: string | null;
@@ -883,4 +902,136 @@ export interface PropertyAmenity {
   namePtBr: string;
   category: string;
   icon: string | null;
+}
+
+// ==================== TICKET TYPES ====================
+
+/**
+ * Ticket priority levels
+ */
+export type TicketPriority = 'low' | 'medium' | 'high' | 'urgent';
+
+/**
+ * Ticket status workflow
+ */
+export type TicketStatus = 'open' | 'in_progress' | 'done' | 'cancelled';
+
+/**
+ * Ticket categories for maintenance issues
+ */
+export type TicketCategory =
+  | 'cleaning'
+  | 'maintenance'
+  | 'plumbing'
+  | 'electrical'
+  | 'hvac'
+  | 'appliance'
+  | 'furniture'
+  | 'internet'
+  | 'other';
+
+/**
+ * Ticket document stored in MongoDB
+ */
+export interface TicketDoc {
+  _id: string;
+  id: string; // Human-readable ID (e.g., "TKT-001")
+  title: string;
+  description: string;
+  category: TicketCategory;
+  priority: TicketPriority;
+  status: TicketStatus;
+
+  // Property association
+  propertyId: string | null;
+  propertyCode: string | null;
+  propertyName: string | null;
+
+  // Assignment
+  assignedTo: string | null; // User ID
+  assignedToName: string | null; // User name
+
+  // Reservation link (optional)
+  reservationId: string | null;
+  guestName: string | null;
+
+  // Timestamps
+  createdAt: Date;
+  updatedAt: Date;
+  resolvedAt: Date | null;
+
+  // Resolution tracking
+  resolutionTime: number | null; // Minutes to resolve
+  resolutionNotes: string | null;
+}
+
+/**
+ * Input for creating a new ticket
+ */
+export interface CreateTicketInput {
+  title: string;
+  description: string;
+  category: TicketCategory;
+  priority: TicketPriority;
+  propertyId?: string;
+  assignedTo?: string;
+  reservationId?: string;
+}
+
+/**
+ * Input for updating a ticket
+ */
+export interface UpdateTicketInput {
+  title?: string;
+  description?: string;
+  category?: TicketCategory;
+  priority?: TicketPriority;
+  status?: TicketStatus;
+  assignedTo?: string;
+  resolutionNotes?: string;
+}
+
+/**
+ * Ticket statistics for Operacional tab
+ */
+export interface TicketStatistics {
+  totalTickets: number;
+  openTickets: number;
+  inProgressTickets: number;
+  doneTickets: number;
+  cancelledTickets: number;
+  averageResolutionTime: number; // In minutes
+  byCategory: Record<string, number>;
+  byPriority: Record<string, number>;
+  byAssignee: Record<string, { count: number; avgTime: number }>;
+  byProperty: Record<string, number>;
+  byMonth: Record<string, number>;
+}
+
+// ==================== TEAM TYPES ====================
+
+/**
+ * Team member performance metrics
+ */
+export interface TeamMemberPerformance {
+  userId: string;
+  userName: string;
+  totalReservations: number;
+  currentMonthReservations: number;
+  futureReservations: number;
+  averageRating: number;
+  ratingsCount: number;
+  totalRevenue: number;
+}
+
+/**
+ * Team statistics for Equipe Guest tab
+ */
+export interface TeamStatistics {
+  members: TeamMemberPerformance[];
+  distribution: Record<string, number>; // userName -> count
+  monthlyComparison: {
+    currentMonth: Record<string, number>;
+    previousMonth: Record<string, number>;
+  };
 }

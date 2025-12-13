@@ -494,6 +494,7 @@ async function writeUnifiedBookingsToMongo(
             checkOutDate: booking.checkOutDate,
             checkOutTime: booking.checkOutTime || null,
             nights,
+            creationDate: booking.creationDate || null,
 
             // Guest info
             guestName,
@@ -501,6 +502,14 @@ async function writeUnifiedBookingsToMongo(
             adults: booking.stats?.adults || 0,
             children: booking.stats?.children || 0,
             babies: booking.stats?.babies || 0,
+
+            // Client demographics (will be enriched separately)
+            clientId: booking._idclient || null,
+            guestCountry: null,
+            guestLanguage: null,
+            guestNationality: null,
+            guestEmail: null,
+            guestPhone: null,
 
             // Platform/Source
             platform,

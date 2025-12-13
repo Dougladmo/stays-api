@@ -95,9 +95,16 @@ export async function getBookingStatistics(
     }
 
     // Lead time calculation (days between creation and check-in)
-    // Note: Would need creationDate in the unified booking document
-    // For now, using a placeholder
-    totalLeadTime += 14; // Placeholder
+    if (booking.creationDate && booking.checkInDate) {
+      const created = parseISO(booking.creationDate);
+      const checkIn = parseISO(booking.checkInDate);
+      const leadDays = differenceInDays(checkIn, created);
+
+      // Only count positive lead times (creation before check-in)
+      if (leadDays >= 0) {
+        totalLeadTime += leadDays;
+      }
+    }
 
     // Stay length
     totalStayLength += booking.nights || 1;
@@ -253,8 +260,19 @@ export async function getCancellationAnalysis(
       // Revenue impact
       revenueImpact += booking.priceValue || 0;
 
-      // Advance notice (placeholder - would need cancellation date)
-      totalAdvanceNotice += 7;
+      // Advance notice approximation using updatedAt as proxy for cancellation date
+      // Note: This is an approximation since Stays.net doesn't provide actual cancellation timestamp
+      // updatedAt is likely close to when the booking was canceled
+      if (booking.updatedAt && booking.checkInDate) {
+        const updated = booking.updatedAt instanceof Date ? booking.updatedAt : parseISO(booking.updatedAt as any);
+        const checkIn = parseISO(booking.checkInDate);
+        const noticeDays = differenceInDays(checkIn, updated);
+
+        // Only count if canceled before check-in (positive notice)
+        if (noticeDays >= 0) {
+          totalAdvanceNotice += noticeDays;
+        }
+      }
 
       // By channel
       const channel = booking.platform || booking.channelName || 'Direct';
@@ -278,6 +296,7 @@ export async function getCancellationAnalysis(
     totalCancellations,
     cancellationRate: Math.round(cancellationRate * 10) / 10,
     averageAdvanceNotice: Math.round(averageAdvanceNotice * 10) / 10,
+    averageAdvanceNoticeNote: 'Approximation using last update date (Stays.net does not provide actual cancellation timestamp)',
     byChannel: Object.fromEntries(byChannel),
     byMonth: Object.fromEntries(byMonth),
     revenueImpact,

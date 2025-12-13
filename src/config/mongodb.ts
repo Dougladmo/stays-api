@@ -156,6 +156,38 @@ async function createIndexes(): Promise<void> {
       { background: true }
     );
 
+    // ============ TICKET INDEXES ============
+
+    // Unique index on ticket ID
+    await db.collection('stays_tickets').createIndex(
+      { id: 1 },
+      { unique: true, background: true }
+    );
+
+    // Index for filtering by status
+    await db.collection('stays_tickets').createIndex(
+      { status: 1 },
+      { background: true }
+    );
+
+    // Index for filtering by assigned user
+    await db.collection('stays_tickets').createIndex(
+      { assignedTo: 1 },
+      { background: true }
+    );
+
+    // Index for property-based queries
+    await db.collection('stays_tickets').createIndex(
+      { propertyId: 1 },
+      { background: true }
+    );
+
+    // Compound index for date range queries
+    await db.collection('stays_tickets').createIndex(
+      { createdAt: -1, status: 1 },
+      { background: true }
+    );
+
     console.log('📇 MongoDB indexes created');
   } catch (error) {
     // Indexes might already exist, which is fine
@@ -193,6 +225,8 @@ export function getCollections() {
     // Property collections
     properties: database.collection('stays_properties'),
     propertySyncStatus: database.collection('stays_property_sync_status'),
+    // Ticket collections
+    tickets: database.collection('stays_tickets'),
   };
 }
 

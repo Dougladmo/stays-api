@@ -6,6 +6,7 @@
 import cron from 'node-cron';
 import { syncStaysData, getSyncStatus } from '../services/sync/SyncService.js';
 import { syncPropertiesData, getPropertySyncStatus } from '../services/sync/PropertySyncService.js';
+import { enrichBookingsWithClientData } from '../services/sync/ClientEnrichmentService.js';
 import { config } from '../config/env.js';
 
 let syncJob: cron.ScheduledTask | null = null;
@@ -40,6 +41,16 @@ export function startScheduler(): void {
         listings: result.listingsCount,
         duration: `${result.durationMs}ms`,
       });
+
+      // Run client enrichment after sync
+      try {
+        const enrichedCount = await enrichBookingsWithClientData();
+        if (enrichedCount > 0) {
+          console.log(`📊 Enriched ${enrichedCount} additional bookings`);
+        }
+      } catch (error) {
+        console.error('❌ Client enrichment error:', error);
+      }
     } catch (error) {
       console.error('❌ Scheduled sync error:', error);
     }
@@ -83,6 +94,14 @@ export async function runInitialSync(): Promise<void> {
         listings: result.listingsCount,
         duration: `${result.durationMs}ms`,
       });
+
+      // Enrich bookings with client demographics
+      try {
+        const enrichedCount = await enrichBookingsWithClientData();
+        console.log(`📊 Enriched ${enrichedCount} bookings with client data`);
+      } catch (error) {
+        console.error('❌ Client enrichment error:', error);
+      }
     } catch (error) {
       console.error('❌ Initial sync error:', error);
     }
