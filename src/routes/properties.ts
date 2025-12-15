@@ -15,6 +15,7 @@ import {
   syncPropertiesData,
   getPropertySyncStatus
 } from '../services/sync/PropertySyncService.js';
+import propertyCharacteristicsRoutes from './propertyCharacteristics.js';
 
 export async function propertiesRoutes(fastify: FastifyInstance): Promise<void> {
   // Add auth to all routes
@@ -128,4 +129,38 @@ export async function propertiesRoutes(fastify: FastifyInstance): Promise<void> 
       customFields
     };
   });
+
+  // GET /api/v1/properties/test-property-api/:id - TEST ENDPOINT
+  // Testa o endpoint /content/properties vs /content/listings
+  fastify.get('/properties/test-property-api/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    const { staysApiClient } = await import('../services/stays/StaysApiClient.js');
+
+    try {
+      const [propertyData, listingData] = await Promise.allSettled([
+        staysApiClient.getPropertyDetails(id),
+        staysApiClient.getEnhancedListingDetails(id)
+      ]);
+
+      return {
+        propertyEndpoint: {
+          status: propertyData.status,
+          data: propertyData.status === 'fulfilled' ? propertyData.value : null,
+          error: propertyData.status === 'rejected' ? propertyData.reason : null,
+        },
+        listingEndpoint: {
+          status: listingData.status,
+          data: listingData.status === 'fulfilled' ? listingData.value : null,
+          error: listingData.status === 'rejected' ? listingData.reason : null,
+        },
+      };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  });
+
+  // Register property characteristics routes
+  await fastify.register(propertyCharacteristicsRoutes, { prefix: '/properties' });
 }

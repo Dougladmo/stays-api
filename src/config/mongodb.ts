@@ -156,6 +156,18 @@ async function createIndexes(): Promise<void> {
       { background: true }
     );
 
+    // Index for manual override tracking
+    await db.collection('stays_properties').createIndex(
+      { lastManualUpdateAt: -1 },
+      { background: true }
+    );
+
+    // Index for WiFi updates tracking
+    await db.collection('stays_properties').createIndex(
+      { 'manualOverrides.wifi.updatedAt': -1 },
+      { background: true }
+    );
+
     // ============ TICKET INDEXES ============
 
     // Unique index on ticket ID

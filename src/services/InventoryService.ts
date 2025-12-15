@@ -15,6 +15,10 @@ import type {
   CreateInventoryItemInput,
   UpdateInventoryItemInput,
   CreateTransactionInput,
+  InventorySyncStats,
+  SyncCategoryStats,
+  InventoryReferenceData,
+  PropertyAmenity,
 } from './stays/types.js';
 
 // Collection names
@@ -415,6 +419,467 @@ export async function getReferenceConditions(): Promise<InventoryReferenceCondit
     ...doc,
     _id: doc._id.toString(),
   })) as unknown as InventoryReferenceCondition[];
+}
+
+// ==================== COMPREHENSIVE SYNC FUNCTIONS ====================
+
+/**
+ * Comprehensive sync of ALL Stays.net reference data
+ * Extends existing syncReferenceData to include amenities and property linking
+ */
+export async function syncAllStaysReferenceData(options: {
+  populate?: boolean;
+} = {}): Promise<InventorySyncStats> {
+  const startTime = Date.now();
+  const stats: InventorySyncStats = {
+    categories: { added: 0, updated: 0, total: 0 },
+    items: { added: 0, updated: 0, total: 0 },
+    conditions: { added: 0, updated: 0, total: 0 },
+    amenities: { added: 0, updated: 0, total: 0 },
+    properties_updated: 0,
+    sync_duration_ms: 0,
+    sync_timestamp: new Date(),
+    errors: []
+  };
+
+  try {
+    console.log('📥 Starting comprehensive Stays.net sync...');
+
+    // Step 1: Sync existing reference data (categories, items, conditions)
+    const basicSyncResult = await syncReferenceData();
+    stats.categories = {
+      added: basicSyncResult.categories,
+      updated: 0,
+      total: basicSyncResult.categories
+    };
+    stats.items = {
+      added: basicSyncResult.items,
+      updated: 0,
+      total: basicSyncResult.items
+    };
+    stats.conditions = {
+      added: basicSyncResult.conditions,
+      updated: 0,
+      total: basicSyncResult.conditions
+    };
+
+    // Step 2: Sync amenities catalog
+    const amenitiesStats = await syncAmenities();
+    stats.amenities = amenitiesStats;
+
+    // Step 3: Sync property amenities from enhanced listings
+    const propertiesStats = await syncPropertyAmenities();
+    stats.properties_updated = propertiesStats.updated;
+
+    // Step 4: Generate amenity→inventory suggestions
+    await generateAmenitySuggestions();
+
+    // Step 5 (optional): Populate inventory from reference catalog
+    if (options.populate) {
+      console.log('📦 Populating inventory items from reference catalog...');
+      const populateStats = await populateInventoryFromReference();
+      stats.inventory_populated = populateStats;
+    }
+
+    stats.sync_duration_ms = Date.now() - startTime;
+
+    // Log sync event
+    await logSyncEvent(stats);
+
+    console.log(`✅ Comprehensive sync complete in ${(stats.sync_duration_ms / 1000).toFixed(2)}s`);
+
+    return stats;
+  } catch (error) {
+    stats.errors?.push((error as Error).message);
+    stats.sync_duration_ms = Date.now() - startTime;
+    console.error('❌ Sync failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Sync amenities catalog from Stays.net
+ */
+async function syncAmenities(): Promise<SyncCategoryStats> {
+  console.log('📥 Syncing amenities from Stays.net...');
+  const db = getDb();
+
+  const amenitiesData = await staysApiClient.getAmenities();
+
+  if (!amenitiesData?.length) {
+    console.log('⚠️ No amenities data received from Stays.net');
+    return { added: 0, updated: 0, total: 0 };
+  }
+
+  const collection = db.collection('inventory_reference_amenities');
+  const bulkOps = amenitiesData.map((amenity: any) => ({
+    updateOne: {
+      filter: { stays_amenity_id: amenity._id },
+      update: {
+        $set: {
+          stays_amenity_id: amenity._id,
+          names: {
+            pt_BR: amenity._mstitle?.pt_BR || amenity._mstitle?.['pt-BR'] || amenity.name || 'Sem nome',
+            en_US: amenity._mstitle?.en_US || amenity._mstitle?.['en-US'] || amenity.name || 'No name',
+            es_ES: amenity._mstitle?.es_ES || amenity._mstitle?.['es-ES']
+          },
+          description: amenity.description ? {
+            pt_BR: amenity.description.pt_BR || amenity.description['pt-BR'],
+            en_US: amenity.description.en_US || amenity.description['en-US']
+          } : undefined,
+          category: categorizeAmenity(amenity._mstitle?.pt_BR || amenity.name || ''),
+          icon: mapAmenityIcon(amenity._mstitle?.pt_BR || amenity.name || ''),
+          last_synced: new Date(),
+          updatedAt: new Date(),
+          metadata: { stays_raw_data: amenity }
+        },
+        $setOnInsert: {
+          createdAt: new Date()
+        }
+      },
+      upsert: true
+    }
+  }));
+
+  const result = await collection.bulkWrite(bulkOps);
+
+  console.log(`✅ Synced ${amenitiesData.length} amenities (${result.upsertedCount} new, ${result.modifiedCount} updated)`);
+
+  return {
+    added: result.upsertedCount,
+    updated: result.modifiedCount,
+    total: amenitiesData.length
+  };
+}
+
+/**
+ * Sync property amenities from enhanced listings
+ */
+async function syncPropertyAmenities(): Promise<{ updated: number }> {
+  console.log('📥 Syncing property amenities...');
+  const db = getDb();
+
+  const listings = await staysApiClient.getAllEnhancedListings();
+  const propertiesCollection = db.collection('stays_properties');
+  const amenitiesCollection = db.collection('inventory_reference_amenities');
+
+  let updated = 0;
+
+  for (const listing of listings) {
+    if (!listing.amenities?.length) continue;
+
+    // Enrich amenity data from reference collection
+    const enrichedAmenities: PropertyAmenity[] = [];
+
+    for (const amenityId of listing.amenities) {
+      const refAmenity: any = await amenitiesCollection.findOne({
+        stays_amenity_id: typeof amenityId === 'string' ? amenityId : amenityId._id || amenityId.id
+      });
+
+      if (refAmenity) {
+        enrichedAmenities.push({
+          stays_amenity_id: refAmenity.stays_amenity_id,
+          name: {
+            pt_BR: refAmenity.names.pt_BR,
+            en_US: refAmenity.names.en_US
+          },
+          description: refAmenity.description,
+          category: refAmenity.category,
+          icon: refAmenity.icon,
+          last_verified: new Date()
+        });
+      }
+    }
+
+    if (enrichedAmenities.length > 0) {
+      await propertiesCollection.updateOne(
+        { stays_listing_id: listing._id },
+        {
+          $set: {
+            amenities: enrichedAmenities,
+            amenities_last_synced: new Date()
+          }
+        },
+        { upsert: true }
+      );
+
+      updated++;
+    }
+  }
+
+  console.log(`✅ Updated amenities for ${updated} properties`);
+  return { updated };
+}
+
+/**
+ * Generate AI suggestions for linking amenities to inventory items
+ */
+async function generateAmenitySuggestions(): Promise<void> {
+  console.log('🔍 Generating amenity→inventory suggestions...');
+  const db = getDb();
+
+  const propertiesCollection = db.collection('stays_properties');
+  const inventoryCollection = db.collection(COLLECTIONS.ITEMS);
+
+  const properties = await propertiesCollection.find({
+    amenities: { $exists: true, $ne: [] }
+  }).toArray();
+
+  for (const property of properties) {
+    const updatedAmenities = [];
+
+    for (const amenity of (property.amenities || [])) {
+      // Proteção: amenity.name.pt_BR pode ser undefined
+      const amenityName = amenity.name?.pt_BR || amenity.name?.en_US || '';
+      if (!amenityName) continue; // Skip amenidades sem nome
+
+      const keywords = extractKeywords(amenityName);
+
+      const suggestions = await inventoryCollection
+        .find({
+          $or: [
+            { name: { $regex: keywords, $options: 'i' } },
+            { 'multilingual_names.pt_BR': { $regex: keywords, $options: 'i' } },
+            { description: { $regex: keywords, $options: 'i' } }
+          ]
+        })
+        .limit(3)
+        .toArray();
+
+      updatedAmenities.push({
+        ...amenity,
+        suggested_inventory_items: suggestions.map(s => s._id.toString())
+      });
+    }
+
+    await propertiesCollection.updateOne(
+      { _id: property._id },
+      { $set: { amenities: updatedAmenities } }
+    );
+  }
+
+  console.log('✅ Generated suggestions for all properties');
+}
+
+/**
+ * Get all reference data for frontend consumption
+ */
+export async function getReferenceData(): Promise<InventoryReferenceData> {
+  const db = getDb();
+
+  const [categories, items, conditions, amenities] = await Promise.all([
+    db.collection(COLLECTIONS.REF_CATEGORIES).find({}).toArray(),
+    db.collection(COLLECTIONS.REF_ITEMS).find({}).toArray(),
+    db.collection(COLLECTIONS.REF_CONDITIONS).find({}).toArray(),
+    db.collection('inventory_reference_amenities').find({}).toArray()
+  ]);
+
+  return {
+    categories: categories.map((c: any) => ({
+      stays_category_id: c.staysCategoryId,
+      names: { pt_BR: c.titlePtBr, en_US: c.titles?.en_US || c.titlePtBr }
+    })),
+    items: items.map((i: any) => ({
+      stays_item_id: i.staysItemId,
+      stays_category_id: i.categoryId,
+      names: { pt_BR: i.titlePtBr, en_US: i.titles?.en_US || i.titlePtBr }
+    })),
+    conditions: conditions.map((c: any) => ({
+      stays_condition_id: c.staysConditionId,
+      names: { pt_BR: c.titlePtBr, en_US: c.titles?.en_US || c.titlePtBr }
+    })),
+    amenities: amenities.map((a: any) => ({
+      stays_amenity_id: a.stays_amenity_id,
+      names: a.names,
+      category: a.category,
+      icon: a.icon
+    }))
+  };
+}
+
+/**
+ * Get property amenities with suggestions
+ */
+export async function getPropertyAmenities(propertyId: string): Promise<PropertyAmenity[]> {
+  const db = getDb();
+  const propertiesCollection = db.collection('stays_properties');
+
+  // Try to find by MongoDB _id or stays_listing_id
+  const property = await propertiesCollection.findOne({
+    $or: [
+      { _id: propertyId as any },
+      { stays_listing_id: propertyId }
+    ]
+  });
+
+  return property?.amenities || [];
+}
+
+// ==================== HELPER FUNCTIONS ====================
+
+/**
+ * Categorize amenity for organization
+ */
+function categorizeAmenity(name: string): string {
+  const categories: Record<string, string[]> = {
+    'kitchen': ['cozinha', 'kitchen', 'geladeira', 'fridge', 'fogão', 'stove', 'microondas', 'microwave', 'cafeteira', 'coffee'],
+    'bathroom': ['banheiro', 'bathroom', 'chuveiro', 'shower', 'toalha', 'towel', 'secador', 'dryer'],
+    'bedroom': ['quarto', 'bedroom', 'cama', 'bed', 'travesseiro', 'pillow', 'lençol', 'sheet', 'cobertor', 'blanket'],
+    'electronics': ['tv', 'wi-fi', 'wifi', 'ar condicionado', 'air conditioning', 'ventilador', 'fan', 'aquecedor', 'heater'],
+    'outdoor': ['piscina', 'pool', 'jardim', 'garden', 'churrasqueira', 'grill', 'varanda', 'balcony', 'terraço', 'terrace'],
+    'safety': ['alarme', 'alarm', 'extintor', 'extinguisher', 'cofre', 'safe', 'câmera', 'camera'],
+    'cleaning': ['limpeza', 'cleaning', 'vassoura', 'broom', 'aspirador', 'vacuum', 'ferro', 'iron'],
+    'entertainment': ['jogos', 'games', 'livros', 'books', 'música', 'music', 'netflix'],
+    'laundry': ['lavanderia', 'laundry', 'máquina de lavar', 'washing machine', 'secadora', 'dryer'],
+    'accessibility': ['acessibilidade', 'accessibility', 'rampa', 'ramp', 'elevador', 'elevator']
+  };
+
+  const nameLower = name.toLowerCase();
+
+  for (const [category, keywords] of Object.entries(categories)) {
+    if (keywords.some(kw => nameLower.includes(kw))) {
+      return category;
+    }
+  }
+
+  return 'general';
+}
+
+/**
+ * Map amenity to icon identifier (Lucide React icons)
+ */
+function mapAmenityIcon(name: string): string {
+  const iconMap: Record<string, string> = {
+    'kitchen': 'ChefHat',
+    'bathroom': 'Bath',
+    'bedroom': 'Bed',
+    'electronics': 'Tv',
+    'outdoor': 'Trees',
+    'safety': 'Shield',
+    'cleaning': 'Sparkles',
+    'entertainment': 'Gamepad2',
+    'laundry': 'WashingMachine',
+    'accessibility': 'Accessibility',
+    'general': 'Package'
+  };
+
+  const category = categorizeAmenity(name);
+  return iconMap[category] || 'Package';
+}
+
+/**
+ * Extract keywords for matching
+ */
+function extractKeywords(text: string): string {
+  // Proteção contra undefined/null/empty
+  if (!text) return '';
+
+  // Remove articles, prepositions, extract core words
+  const stopWords = ['de', 'da', 'do', 'para', 'com', 'sem', 'the', 'of', 'for', 'with', 'a', 'o', 'as', 'os'];
+  const words = text.toLowerCase().split(/\s+/);
+  const keywords = words.filter(w => !stopWords.includes(w) && w.length > 2);
+  return keywords.join('|');
+}
+
+/**
+ * Populate inventory_items from reference catalog with quantity 0
+ * Creates items that don't exist yet, preserving existing items
+ */
+export async function populateInventoryFromReference(): Promise<{
+  created: number;
+  skipped: number;
+  total: number;
+}> {
+  console.log('📦 Populating inventory from reference catalog...');
+  const db = getDb();
+
+  const refItemsCollection = db.collection(COLLECTIONS.REF_ITEMS);
+  const itemsCollection = db.collection(COLLECTIONS.ITEMS);
+
+  // Get all reference items
+  const referenceItems = await refItemsCollection.find({}).toArray();
+
+  let created = 0;
+  let skipped = 0;
+
+  for (const refItem of referenceItems) {
+    // Check if item already exists by staysReferenceItemId (correct field)
+    // OR by old field name (for migration)
+    const exists = await itemsCollection.findOne({
+      $or: [
+        { staysReferenceItemId: refItem.stays_item_id },
+        { stays_reference_item_id: refItem.stays_item_id }
+      ]
+    });
+
+    if (exists) {
+      // If exists with OLD field names, update it
+      if (exists.stays_reference_item_id || exists.min_stock !== undefined) {
+        await itemsCollection.updateOne(
+          { _id: exists._id },
+          {
+            $set: {
+              category: (refItem.category as any) || 'OTHER',
+              minStock: 0,
+              staysReferenceItemId: refItem.stays_item_id,
+              staysReferenceCategoryId: refItem.stays_category_id,
+              source: 'stays_catalog',
+              updatedAt: new Date()
+            },
+            $unset: {
+              stays_reference_item_id: '',
+              stays_category_id: '',
+              min_stock: '',
+              unit: '',
+              status: ''
+            }
+          }
+        );
+      }
+      skipped++;
+      continue;
+    }
+
+    // Create new inventory item with quantity 0
+    const newItem = {
+      name: refItem.names.pt_BR || refItem.names.en_US || 'Item sem nome',
+      multilingual_names: refItem.names,
+      category: (refItem.category as any) || 'OTHER', // Use 'OTHER' as fallback (valid InventoryCategory)
+      description: `Item sincronizado do catálogo Stays.net`,
+      stock: { CENTRAL: 0 }, // Quantidade 0 no estoque central
+      minStock: 0, // Changed from min_stock to minStock (camelCase)
+      staysReferenceItemId: refItem.stays_item_id, // Changed from stays_reference_item_id to staysReferenceItemId
+      staysReferenceCategoryId: refItem.stays_category_id, // Changed from stays_category_id to staysReferenceCategoryId
+      source: 'stays_catalog' as const,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    await itemsCollection.insertOne(newItem);
+    created++;
+  }
+
+  const result = {
+    created,
+    skipped,
+    total: referenceItems.length
+  };
+
+  console.log(`✅ Populated inventory: ${created} created, ${skipped} skipped, ${result.total} total`);
+
+  return result;
+}
+
+/**
+ * Log sync event for monitoring
+ */
+async function logSyncEvent(stats: InventorySyncStats): Promise<void> {
+  const db = getDb();
+  await db.collection('sync_logs').insertOne({
+    type: 'inventory_sync',
+    stats,
+    timestamp: new Date()
+  });
 }
 
 // ============ INDEX CREATION ============

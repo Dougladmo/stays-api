@@ -240,4 +240,101 @@ export async function inventoryRoutes(fastify: FastifyInstance): Promise<void> {
       timestamp: new Date().toISOString(),
     };
   });
+
+  // ============ COMPREHENSIVE SYNC & REFERENCE DATA ============
+
+  /**
+   * POST /api/v1/inventory/sync-stays-data
+   * Trigger comprehensive sync of ALL Stays.net reference data
+   * (categories, items, conditions, amenities, property linking)
+   */
+  fastify.post('/inventory/sync-stays-data', async (request, reply) => {
+    try {
+      const body = request.body as { populate?: boolean } | undefined;
+      const populate = body?.populate ?? false;
+
+      const stats = await InventoryService.syncAllStaysReferenceData({ populate });
+
+      let message = `Sync completed in ${(stats.sync_duration_ms / 1000).toFixed(2)}s`;
+      if (stats.inventory_populated) {
+        message += ` | ${stats.inventory_populated.created} items created, ${stats.inventory_populated.skipped} skipped`;
+      }
+
+      return {
+        success: true,
+        stats,
+        message
+      };
+    } catch (error) {
+      const err = error as Error;
+      return reply.code(500).send({
+        success: false,
+        error: err.message
+      });
+    }
+  });
+
+  /**
+   * GET /api/v1/inventory/reference-data
+   * Get all reference data (categories, items, conditions, amenities)
+   * Optimized endpoint for frontend consumption
+   */
+  fastify.get('/inventory/reference-data', async (request, reply) => {
+    try {
+      const data = await InventoryService.getReferenceData();
+      return data;
+    } catch (error) {
+      const err = error as Error;
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  /**
+   * GET /api/v1/inventory/property-amenities/:propertyId
+   * Get amenities for a specific property with suggestions
+   */
+  fastify.get<{ Params: { propertyId: string } }>(
+    '/inventory/property-amenities/:propertyId',
+    async (request: FastifyRequest<{ Params: { propertyId: string } }>, reply: FastifyReply) => {
+      try {
+        const amenities = await InventoryService.getPropertyAmenities(request.params.propertyId);
+        return { amenities };
+      } catch (error) {
+        const err = error as Error;
+        return reply.code(500).send({ error: err.message });
+      }
+    }
+  );
+
+  /**
+   * GET /api/v1/inventory/sync-status
+   * Get last sync statistics and collection counts
+   */
+  fastify.get('/inventory/sync-status', async (request, reply) => {
+    try {
+      const { getDb } = await import('../config/mongodb.js');
+      const db = getDb();
+
+      const lastSync = await db.collection('sync_logs')
+        .find({ type: 'inventory_sync' })
+        .sort({ timestamp: -1 })
+        .limit(1)
+        .toArray();
+
+      const collections = {
+        categories: await db.collection('inventory_reference_categories').countDocuments(),
+        items: await db.collection('inventory_reference_items').countDocuments(),
+        conditions: await db.collection('inventory_reference_conditions').countDocuments(),
+        amenities: await db.collection('inventory_reference_amenities').countDocuments()
+      };
+
+      return {
+        last_sync: lastSync[0] || null,
+        collections
+      };
+    } catch (error) {
+      const err = error as Error;
+      return reply.code(500).send({ error: err.message });
+    }
+  });
 }

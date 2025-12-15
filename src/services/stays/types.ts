@@ -646,6 +646,12 @@ export interface InventoryItemDoc {
   stock: Record<string, number>; // { 'CENTRAL': 10, 'I-VP-455': 2 }
   staysReferenceItemId?: string;
   staysReferenceCategoryId?: string;
+  stays_condition_id?: string;
+  source?: 'manual' | 'stays_catalog' | 'amenity_suggestion';
+  multilingual_names?: {
+    pt_BR?: string;
+    en_US?: string;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -749,6 +755,106 @@ export interface CreateTransactionInput {
   destination: string;
   user: string;
   notes?: string;
+}
+
+// ==================== INVENTORY SYNC TYPES ====================
+
+/**
+ * Statistics for a sync operation category
+ */
+export interface SyncCategoryStats {
+  added: number;
+  updated: number;
+  total: number;
+}
+
+/**
+ * Comprehensive sync statistics for Stays.net inventory data
+ */
+export interface InventorySyncStats {
+  categories: SyncCategoryStats;
+  items: SyncCategoryStats;
+  conditions: SyncCategoryStats;
+  amenities: SyncCategoryStats;
+  properties_updated: number;
+  inventory_populated?: {
+    created: number;
+    skipped: number;
+    total: number;
+  };
+  sync_duration_ms: number;
+  sync_timestamp: Date;
+  errors?: string[];
+}
+
+/**
+ * Reference data for frontend consumption
+ */
+export interface InventoryReferenceData {
+  categories: Array<{
+    stays_category_id: string;
+    names: { pt_BR: string; en_US: string };
+  }>;
+  items: Array<{
+    stays_item_id: string;
+    stays_category_id?: string;
+    names: { pt_BR: string; en_US: string };
+  }>;
+  conditions: Array<{
+    stays_condition_id: string;
+    names: { pt_BR: string; en_US: string };
+  }>;
+  amenities: Array<{
+    stays_amenity_id: string;
+    names: { pt_BR: string; en_US: string };
+    category?: string;
+    icon?: string;
+  }>;
+}
+
+/**
+ * Property amenity with inventory linking
+ */
+export interface PropertyAmenity {
+  stays_amenity_id: string;
+  name: {
+    pt_BR: string;
+    en_US: string;
+  };
+  description?: {
+    pt_BR?: string;
+    en_US?: string;
+  };
+  category?: string;
+  icon?: string;
+  linked_inventory_item_id?: string;
+  suggested_inventory_items?: string[];
+  last_verified: Date;
+}
+
+/**
+ * Amenity reference document (synced from Stays.net)
+ */
+export interface InventoryReferenceAmenity {
+  _id: string;
+  stays_amenity_id: string;
+  names: {
+    pt_BR: string;
+    en_US: string;
+    es_ES?: string;
+  };
+  description?: {
+    pt_BR?: string;
+    en_US?: string;
+  };
+  category?: string;
+  icon?: string;
+  last_synced: Date;
+  metadata?: {
+    stays_raw_data?: any;
+  };
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // ==================== PROPERTY/LISTING TYPES ====================
@@ -863,6 +969,11 @@ export interface EnhancedListingDetails {
   otaChannels?: Array<{
     name: string;
   }>;
+
+  // Amenities (array of IDs that need translation)
+  amenities?: Array<{
+    _id: string;
+  }>;
 }
 
 /**
@@ -891,6 +1002,40 @@ export interface PropertyDocument {
   createdAt: Date;
   updatedAt: Date;
   syncedAt: Date;
+  // Manual overrides - data entered manually by users
+  manualOverrides: {
+    wifi: {
+      network: string | null;
+      password: string | null;
+      updatedAt: Date | null;
+      updatedBy: string | null;
+    };
+    access: {
+      doorCode: string | null;
+      conciergeHours: string | null;
+      checkInInstructions: string | null;
+      checkOutInstructions: string | null;
+      parkingInfo: string | null;
+      updatedAt: Date | null;
+      updatedBy: string | null;
+    };
+    specifications: {
+      position: string | null; // Frente/Fundos/Lateral/Cobertura
+      viewType: string | null; // Vista para mar/montanha/cidade
+      hasAntiNoiseWindow: boolean | null;
+      cleaningFee: number | null;
+      updatedAt: Date | null;
+      updatedBy: string | null;
+    };
+    maintenance: {
+      specialNotes: string | null;
+      maintenanceContacts: string | null;
+      emergencyProcedures: string | null;
+      updatedAt: Date | null;
+      updatedBy: string | null;
+    };
+  };
+  lastManualUpdateAt: Date | null;
 }
 
 /**
@@ -902,6 +1047,34 @@ export interface PropertyAmenity {
   namePtBr: string;
   category: string;
   icon: string | null;
+}
+
+/**
+ * Property characteristics for API response
+ * Combines synced data from Stays.net with manual overrides
+ */
+export interface PropertyCharacteristics {
+  propertyId: string;
+  staysListingId: string;
+  internalName: string;
+  name: string;
+  address: string;
+  basicInfo: {
+    rooms: number;
+    beds: number;
+    bathrooms: number;
+    squareFeet: number | null;
+    maxGuests: number;
+  };
+  amenities: PropertyAmenity[];
+  descriptions: Record<string, string>;
+  images: ListingImage[];
+  mainImage: ListingImage | null;
+  customFieldsFromStays: Record<string, any>;
+  location: PropertyLocation | null;
+  manualOverrides: PropertyDocument['manualOverrides'];
+  syncedAt: Date;
+  lastManualUpdateAt: Date | null;
 }
 
 // ==================== TICKET TYPES ====================

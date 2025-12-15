@@ -395,7 +395,7 @@ export class StaysApiClient {
   async getAmenities(): Promise<StaysAmenity[]> {
     try {
       return await this.get<StaysAmenity[]>(
-        '/external/v1/translations/listing-amenities'
+        '/external/v1/translation/listing-amenities'
       );
     } catch (error) {
       console.warn('⚠️ Failed to fetch amenities:', error);
@@ -415,6 +415,23 @@ export class StaysApiClient {
     } catch (error) {
       console.warn('⚠️ Failed to fetch custom fields:', error);
       return [];
+    }
+  }
+
+  /**
+   * Retrieves comprehensive property details (NOT listing!)
+   * Uses /content/properties endpoint which returns more complete data
+   * Including amenities, listings (units), and full property characteristics
+   */
+  async getPropertyDetails(propertyId: string): Promise<any> {
+    try {
+      return await this.get<any>(
+        `/external/v1/content/properties/${propertyId}`
+      );
+    } catch (error) {
+      console.warn(`⚠️ Failed to fetch property details for ${propertyId}, falling back to listing endpoint:`, error);
+      // Fallback to listing endpoint if property endpoint fails
+      return this.getEnhancedListingDetails(propertyId);
     }
   }
 

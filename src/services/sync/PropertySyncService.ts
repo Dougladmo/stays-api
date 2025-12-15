@@ -9,34 +9,47 @@ import { getCollections } from '../../config/mongodb.js';
 import type {
   EnhancedListingDetails,
   PropertyDocument,
+  StaysAmenity,
+  PropertyAmenity,
 } from '../stays/types.js';
 
-// Temporarily disabled - will be re-enabled when amenities endpoint works
-// function transformAmenities(
-//   amenityIds: string[],
-//   amenitiesReference: Map<string, StaysAmenity>
-// ): PropertyAmenity[] {
-//   return amenityIds
-//     .map(id => {
-//       const amenity = amenitiesReference.get(id);
-//       if (!amenity) return null;
-//
-//       return {
-//         staysAmenityId: amenity._id,
-//         name: amenity._mstitle['en_US'] || amenity._mstitle['pt_BR'] || 'Unknown',
-//         namePtBr: amenity._mstitle['pt_BR'] || amenity._mstitle['en_US'] || 'Desconhecido',
-//         category: amenity.category || 'general',
-//         icon: amenity.icon || null,
-//       };
-//     })
-//     .filter((a): a is PropertyAmenity => a !== null);
-// }
+/**
+ * Transform amenity IDs to PropertyAmenity objects with translations
+ */
+function transformAmenities(
+  amenityObjects: Array<{ _id: string }> | undefined,
+  amenitiesReference: Map<string, StaysAmenity>
+): PropertyAmenity[] {
+  if (!amenityObjects || amenityObjects.length === 0) {
+    return [];
+  }
+
+  const result = amenityObjects
+    .map(obj => {
+      const amenity = amenitiesReference.get(obj._id);
+      if (!amenity) {
+        return null;
+      }
+
+      return {
+        staysAmenityId: amenity._id,
+        name: amenity._mstitle['en_US'] || amenity._mstitle['pt_BR'] || 'Unknown',
+        namePtBr: amenity._mstitle['pt_BR'] || amenity._mstitle['en_US'] || 'Desconhecido',
+        category: amenity.category || 'general',
+        icon: amenity.icon || null,
+      };
+    })
+    .filter((a): a is PropertyAmenity => a !== null);
+
+  return result;
+}
 
 /**
  * Transform listing data to PropertyDocument
  */
 function transformPropertyDocument(
-  listing: EnhancedListingDetails
+  listing: EnhancedListingDetails,
+  amenitiesReference: Map<string, StaysAmenity>
 ): Omit<PropertyDocument, '_id'> {
   const now = new Date();
 
@@ -64,8 +77,8 @@ function transformPropertyDocument(
     squareFeet: listing._f_square || null,
     maxGuests: listing._i_maxGuests || 0,
 
-    // Amenities with translations (empty for now)
-    amenities: [],
+    // Amenities with translations
+    amenities: transformAmenities(listing.amenities, amenitiesReference),
 
     // Media
     mainImage: listing._t_mainImageMeta?.url
@@ -106,23 +119,109 @@ function transformPropertyDocument(
     createdAt: now,
     updatedAt: now,
     syncedAt: now,
+
+    // Initialize manual overrides (empty on creation, preserved on update)
+    manualOverrides: {
+      wifi: {
+        network: null,
+        password: null,
+        updatedAt: null,
+        updatedBy: null,
+      },
+      access: {
+        doorCode: null,
+        conciergeHours: null,
+        checkInInstructions: null,
+        checkOutInstructions: null,
+        parkingInfo: null,
+        updatedAt: null,
+        updatedBy: null,
+      },
+      specifications: {
+        position: null,
+        viewType: null,
+        hasAntiNoiseWindow: null,
+        cleaningFee: null,
+        updatedAt: null,
+        updatedBy: null,
+      },
+      maintenance: {
+        specialNotes: null,
+        maintenanceContacts: null,
+        emergencyProcedures: null,
+        updatedAt: null,
+        updatedBy: null,
+      },
+    },
+    lastManualUpdateAt: null,
   };
 }
 
 /**
  * Fetch amenities reference data (cached for all properties)
- * Currently disabled - Stays.net API endpoint not working
  */
-// async function fetchAmenitiesReference(): Promise<Map<string, StaysAmenity>> {
-//   console.log('🎨 Fetching amenities reference...');
-//   const amenities = await staysApiClient.getAmenities();
-//
-//   const amenitiesMap = new Map<string, StaysAmenity>();
-//   amenities.forEach(amenity => amenitiesMap.set(amenity._id, amenity));
-//
-//   console.log(`✅ Loaded ${amenitiesMap.size} amenity types`);
-//   return amenitiesMap;
-// }
+async function fetchAmenitiesReference(): Promise<Map<string, StaysAmenity>> {
+  console.log('🎨 Fetching amenities reference...');
+  const amenities = await staysApiClient.getAmenities();
+
+  const amenitiesMap = new Map<string, StaysAmenity>();
+  amenities.forEach(amenity => amenitiesMap.set(amenity._id, amenity));
+
+  console.log(`✅ Loaded ${amenitiesMap.size} amenity types`);
+  return amenitiesMap;
+}
+
+/**
+ * Initialize manualOverrides for properties that have null values
+ */
+async function initializeManualOverridesForExistingProperties(): Promise<number> {
+  const collections = getCollections();
+
+  const defaultManualOverrides = {
+    wifi: {
+      network: null,
+      password: null,
+      updatedAt: null,
+      updatedBy: null,
+    },
+    access: {
+      doorCode: null,
+      conciergeHours: null,
+      checkInInstructions: null,
+      checkOutInstructions: null,
+      parkingInfo: null,
+      updatedAt: null,
+      updatedBy: null,
+    },
+    specifications: {
+      position: null,
+      viewType: null,
+      hasAntiNoiseWindow: null,
+      cleaningFee: null,
+      updatedAt: null,
+      updatedBy: null,
+    },
+    maintenance: {
+      specialNotes: null,
+      maintenanceContacts: null,
+      emergencyProcedures: null,
+      updatedAt: null,
+      updatedBy: null,
+    },
+  };
+
+  const result = await collections.properties.updateMany(
+    { manualOverrides: null },
+    {
+      $set: {
+        manualOverrides: defaultManualOverrides,
+        lastManualUpdateAt: null
+      }
+    }
+  );
+
+  return result.modifiedCount;
+}
 
 /**
  * Write properties to MongoDB using bulkWrite
@@ -136,20 +235,24 @@ async function writePropertiesToMongo(
   const now = new Date();
 
   const operations = properties.map(property => {
-    // Remove createdAt from property to avoid conflict with $setOnInsert
-    const { createdAt, ...propertyWithoutCreatedAt } = property;
+    // Remove fields that should NOT be overwritten during sync
+    const { createdAt, manualOverrides, lastManualUpdateAt, ...syncedFields } = property;
 
     return {
       updateOne: {
         filter: { staysListingId: property.staysListingId },
         update: {
+          // ONLY update fields synced from Stays.net (including amenities)
           $set: {
-            ...propertyWithoutCreatedAt,
+            ...syncedFields,
             updatedAt: now,
             syncedAt: now,
           },
+          // Initialize fields ONLY on document creation (never overwrite)
           $setOnInsert: {
             createdAt: now,
+            manualOverrides: property.manualOverrides,
+            lastManualUpdateAt: null,
           },
         },
         upsert: true,
@@ -216,12 +319,25 @@ export async function syncPropertiesData(): Promise<{
     await updatePropertySyncStatus('running');
 
     // 1. Fetch amenities reference (needed for translations)
-    // Temporarily skip amenities - we'll add them back once we figure out the correct endpoint
-    // const amenitiesReference = new Map<string, StaysAmenity>();
-    console.log('ℹ️ Skipping amenities fetch for now - will sync properties without translated amenities');
+    console.log('🎨 Fetching amenities reference for translations...');
+    const amenitiesReference = await fetchAmenitiesReference();
 
-    // 2. Fetch all property listings with full details
-    const listings = await staysApiClient.getAllEnhancedListings();
+    // 2. Fetch all property listings (without amenities - amenities only in individual endpoint)
+    const listingsList = await staysApiClient.getAllEnhancedListings();
+    console.log(`📋 Fetching detailed data for ${listingsList.length} properties (including amenities)...`);
+
+    // 2.1. Fetch detailed data for each listing to get amenities
+    const listings: EnhancedListingDetails[] = [];
+    for (const basicListing of listingsList) {
+      try {
+        const detailed = await staysApiClient.getEnhancedListingDetails(basicListing._id);
+        listings.push(detailed);
+      } catch (error) {
+        console.warn(`⚠️ Failed to fetch details for ${basicListing.internalName}, using basic data`);
+        listings.push(basicListing);
+      }
+    }
+    console.log(`✅ Fetched detailed data for ${listings.length} properties`);
 
     if (listings.length === 0) {
       console.log('ℹ️ No properties found');
@@ -235,12 +351,18 @@ export async function syncPropertiesData(): Promise<{
 
     // 3. Transform listings to property documents
     const propertyDocuments = listings.map(listing =>
-      transformPropertyDocument(listing)
+      transformPropertyDocument(listing, amenitiesReference)
     );
 
     // 4. Write to MongoDB
     const propertiesWritten = await writePropertiesToMongo(propertyDocuments);
     console.log(`💾 Wrote ${propertiesWritten} properties to MongoDB`);
+
+    // 4.5. Initialize manualOverrides for existing properties that have null values
+    const initialized = await initializeManualOverridesForExistingProperties();
+    if (initialized > 0) {
+      console.log(`🔧 Initialized manualOverrides for ${initialized} existing properties`);
+    }
 
     // 5. Update sync status
     const durationMs = Date.now() - startTime;

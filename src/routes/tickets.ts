@@ -7,7 +7,7 @@ import * as TicketsService from '../services/TicketsService.js';
 
 export async function ticketsRoutes(fastify: FastifyInstance) {
   // Get all tickets with filters
-  fastify.get('/tickets', async (request, reply) => {
+  fastify.get('/tickets', async (request) => {
     const { status, assignedTo, propertyId, from, to, limit } = request.query as any;
 
     const tickets = await TicketsService.getTickets({
@@ -23,7 +23,7 @@ export async function ticketsRoutes(fastify: FastifyInstance) {
   });
 
   // Get ticket statistics
-  fastify.get('/tickets/statistics', async (request, reply) => {
+  fastify.get('/tickets/statistics', async (request) => {
     const { from, to } = request.query as any;
     const stats = await TicketsService.getTicketStatistics(from, to);
     return stats;

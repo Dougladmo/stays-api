@@ -15,10 +15,11 @@ import type {
 } from '../stays/types.js';
 
 // Queue configurations for rate limiting
-const BOOKING_DETAILS_CONCURRENCY = 10;
-const BOOKING_DETAILS_DELAY = 500; // ms between batches
-const LISTING_DETAILS_CONCURRENCY = 10;
-const LISTING_DETAILS_DELAY = 200; // ms between batches
+// Optimized for faster sync while respecting API limits
+const BOOKING_DETAILS_CONCURRENCY = 20; // Increased from 10 for faster processing
+const BOOKING_DETAILS_DELAY = 100; // Reduced from 500ms for faster throughput
+const LISTING_DETAILS_CONCURRENCY = 20; // Increased from 10 for faster processing
+const LISTING_DETAILS_DELAY = 100; // Reduced from 200ms for faster throughput
 
 /**
  * Extracts total price from booking using multiple fallback strategies

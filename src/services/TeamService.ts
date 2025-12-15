@@ -3,7 +3,7 @@
  */
 
 import { getCollections } from '../config/mongodb.js';
-import { format, startOfMonth, endOfMonth, addMonths, parseISO } from 'date-fns';
+import { startOfMonth, endOfMonth, addMonths, parseISO } from 'date-fns';
 import type { TeamMemberPerformance, TeamStatistics } from './stays/types.js';
 
 /**
@@ -17,7 +17,7 @@ export async function assignResponsible(
   const collections = getCollections();
 
   const result = await collections.unifiedBookings.updateOne(
-    { _id: reservationId },
+    { id: reservationId } as any,
     {
       $set: {
         responsibleId: userId,
@@ -41,7 +41,7 @@ export async function addFeedback(
   const collections = getCollections();
 
   const result = await collections.unifiedBookings.updateOne(
-    { _id: reservationId },
+    { id: reservationId } as any,
     {
       $set: {
         feedbackRating: rating,

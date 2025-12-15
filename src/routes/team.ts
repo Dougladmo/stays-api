@@ -7,7 +7,7 @@ import * as TeamService from '../services/TeamService.js';
 
 export async function teamRoutes(fastify: FastifyInstance) {
   // Get team performance statistics
-  fastify.get('/team/statistics', async (request, reply) => {
+  fastify.get('/team/statistics', async () => {
     const stats = await TeamService.getTeamStatistics();
     return stats;
   });
