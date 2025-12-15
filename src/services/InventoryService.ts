@@ -573,7 +573,7 @@ async function syncPropertyAmenities(): Promise<{ updated: number }> {
 
     for (const amenityId of listing.amenities) {
       const refAmenity: any = await amenitiesCollection.findOne({
-        stays_amenity_id: typeof amenityId === 'string' ? amenityId : amenityId._id || amenityId.id
+        stays_amenity_id: typeof amenityId === 'string' ? amenityId : amenityId._id
       });
 
       if (refAmenity) {

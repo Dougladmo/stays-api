@@ -24,22 +24,25 @@ function transformAmenities(
     return [];
   }
 
-  const result = amenityObjects
-    .map(obj => {
-      const amenity = amenitiesReference.get(obj._id);
-      if (!amenity) {
-        return null;
-      }
+  const result: PropertyAmenity[] = [];
 
-      return {
-        staysAmenityId: amenity._id,
-        name: amenity._mstitle['en_US'] || amenity._mstitle['pt_BR'] || 'Unknown',
-        namePtBr: amenity._mstitle['pt_BR'] || amenity._mstitle['en_US'] || 'Desconhecido',
-        category: amenity.category || 'general',
-        icon: amenity.icon || null,
-      };
-    })
-    .filter((a): a is PropertyAmenity => a !== null);
+  for (const obj of amenityObjects) {
+    const amenity = amenitiesReference.get(obj._id);
+    if (!amenity) {
+      continue;
+    }
+
+    result.push({
+      stays_amenity_id: amenity._id,
+      name: {
+        pt_BR: amenity._mstitle['pt_BR'] || amenity._mstitle['en_US'] || 'Desconhecido',
+        en_US: amenity._mstitle['en_US'] || amenity._mstitle['pt_BR'] || 'Unknown'
+      },
+      category: amenity.category,
+      icon: amenity.icon,
+      last_verified: new Date()
+    });
+  }
 
   return result;
 }

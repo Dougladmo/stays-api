@@ -279,7 +279,7 @@ export async function inventoryRoutes(fastify: FastifyInstance): Promise<void> {
    * Get all reference data (categories, items, conditions, amenities)
    * Optimized endpoint for frontend consumption
    */
-  fastify.get('/inventory/reference-data', async (request, reply) => {
+  fastify.get('/inventory/reference-data', async (_request, reply) => {
     try {
       const data = await InventoryService.getReferenceData();
       return data;
@@ -310,7 +310,7 @@ export async function inventoryRoutes(fastify: FastifyInstance): Promise<void> {
    * GET /api/v1/inventory/sync-status
    * Get last sync statistics and collection counts
    */
-  fastify.get('/inventory/sync-status', async (request, reply) => {
+  fastify.get('/inventory/sync-status', async (_request, reply) => {
     try {
       const { getDb } = await import('../config/mongodb.js');
       const db = getDb();

@@ -1039,17 +1039,6 @@ export interface PropertyDocument {
 }
 
 /**
- * Amenity with translations
- */
-export interface PropertyAmenity {
-  staysAmenityId: string;
-  name: string;
-  namePtBr: string;
-  category: string;
-  icon: string | null;
-}
-
-/**
  * Property characteristics for API response
  * Combines synced data from Stays.net with manual overrides
  */
